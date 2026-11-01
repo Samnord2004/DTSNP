@@ -8,6 +8,13 @@ import {
   FireHydrant,
   BarrierGate,
   AdministrationFacility,
+  SnowDump,
+  WasteCollectionSite,
+  FireTurnaround,
+  InspectionCheckPoint,
+  CctvCamera,
+  LightPole,
+  GasRegulatorStation,
 } from '../../types/index.ts';
 import {
   Layers,
@@ -29,6 +36,9 @@ import {
   MapPin,
   FileSpreadsheet,
   Building,
+  Copy,
+  Camera,
+  Snowflake,
 } from 'lucide-react';
 
 export interface LayerCatalogModalProps {
@@ -44,7 +54,8 @@ export interface LayerCatalogModalProps {
     | 'wells'
     | 'switchboards'
     | 'substations'
-    | 'facilities';
+    | 'facilities'
+    | 'seasonal';
   pipelines: PipelineSegment[];
   wells: Well[];
   valves: Valve[];
@@ -53,10 +64,18 @@ export interface LayerCatalogModalProps {
   fireHydrants: FireHydrant[];
   barrierGates?: BarrierGate[];
   adminFacilities?: AdministrationFacility[];
+  snowDumps?: SnowDump[];
+  wasteSites?: WasteCollectionSite[];
+  fireTurnarounds?: FireTurnaround[];
+  inspectionPoints?: InspectionCheckPoint[];
+  cctvCameras?: CctvCamera[];
+  lightPoles?: LightPole[];
+  gasRegulator?: GasRegulatorStation;
   onSelectItem: (type: string, data: any) => void;
   onAddNew: (type: string) => void;
   onEditItem: (type: string, data: any) => void;
   onDeleteItem: (type: string, id: string) => void;
+  onCopyItem?: (type: string, data: any) => void;
 }
 
 export const LayerCatalogModal: React.FC<LayerCatalogModalProps> = ({
@@ -71,10 +90,18 @@ export const LayerCatalogModal: React.FC<LayerCatalogModalProps> = ({
   fireHydrants,
   barrierGates = [],
   adminFacilities = [],
+  snowDumps = [],
+  wasteSites = [],
+  fireTurnarounds = [],
+  inspectionPoints = [],
+  cctvCameras = [],
+  lightPoles = [],
+  gasRegulator,
   onSelectItem,
   onAddNew,
   onEditItem,
   onDeleteItem,
+  onCopyItem,
 }) => {
   if (!isOpen) return null;
 
@@ -89,6 +116,7 @@ export const LayerCatalogModal: React.FC<LayerCatalogModalProps> = ({
     | 'switchboards'
     | 'substations'
     | 'facilities'
+    | 'seasonal'
   >(initialTab);
   const [conditionFilter, setConditionFilter] = useState<'all' | 'maintenance' | 'critical' | 'normal'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -251,17 +279,122 @@ export const LayerCatalogModal: React.FC<LayerCatalogModalProps> = ({
     });
   });
 
+  // Light Poles (Опоры освещения и ЛЭП)
+  lightPoles.forEach((lp) => {
+    allItems.push({
+      id: lp.id,
+      code: lp.code,
+      name: `Опора ЛЭП / Освещение ${lp.code}`,
+      type: 'lightPole',
+      layerName: 'Опора освещения & ВЛ-0.4кВ',
+      specs: `${lp.lampType} · Фаза ${lp.phase} · Дежурный: ${lp.isDutyLight ? 'Да' : 'Нет'} · Фотодатчик: ${lp.hasPhotoSensor ? 'Есть' : 'Нет'}`,
+      condition: lp.status === 'faulty' ? 'critical' : lp.status === 'maintenance' ? 'requires_maintenance' : 'normal',
+      tasksCount: 0,
+      raw: lp,
+    });
+  });
+
+  // Gas Regulator (ГРПШ)
+  if (gasRegulator) {
+    allItems.push({
+      id: gasRegulator.id,
+      code: gasRegulator.code,
+      name: gasRegulator.name,
+      type: 'gasRegulator',
+      layerName: 'Газ & ГРПШ',
+      specs: `${gasRegulator.regulatorModel} · Вход: ${gasRegulator.inletPressureMpa} МПа · Выход: ${gasRegulator.outletPressureKpa} кПа · Телеметрия: ${gasRegulator.hasTelemetry ? 'Есть' : 'Нет'}`,
+      condition: gasRegulator.status === 'warning' ? 'requires_maintenance' : 'normal',
+      tasksCount: 0,
+      raw: gasRegulator,
+    });
+  }
+
+  // CCTV Cameras (Камеры видеонаблюдения)
+  cctvCameras.forEach((cam) => {
+    allItems.push({
+      id: cam.id,
+      code: cam.code,
+      name: cam.name,
+      type: 'cctvCamera',
+      layerName: 'Видеонаблюдение / СКУД',
+      specs: `${cam.resolution} · ${cam.viewDirection} · Опора: ${cam.poleCode || '—'} · Архив: ${cam.cloudArchiveDays} дн. · Ночное видение: ${cam.hasNightVision ? 'Да' : 'Нет'} · ${cam.hasPtz ? 'PTZ поворот' : 'Фикс'}`,
+      condition: cam.status === 'offline' ? 'critical' : cam.status === 'maintenance' ? 'requires_maintenance' : 'normal',
+      tasksCount: 0,
+      raw: cam,
+    });
+  });
+
+  // Snow Dumps (Снегоотвалы)
+  snowDumps.forEach((sd) => {
+    allItems.push({
+      id: sd.id,
+      code: sd.code,
+      name: sd.name,
+      type: 'snowDump',
+      layerName: 'Снегоотвал (Сезонный/МЧС)',
+      specs: `Вместимость: ${sd.capacityCubicMeters} м³ · Заполнение: ${sd.currentFillPercent}%`,
+      condition: sd.currentFillPercent > 80 ? 'critical' : 'normal',
+      tasksCount: 0,
+      raw: sd,
+    });
+  });
+
+  // Waste Sites (Площадки ТБО)
+  wasteSites.forEach((ws) => {
+    allItems.push({
+      id: ws.id,
+      code: ws.code,
+      name: ws.name,
+      type: 'wasteSite',
+      layerName: 'Мусорная площадка ТБО',
+      specs: `Баков: ${ws.containersCount} шт. (${ws.containerVolumeCbm} м³) · График: ${ws.pickupSchedule} · Зимой: ${ws.isWinterActive ? 'Активна' : 'Закрыта'}`,
+      condition: ws.overflowRisk === 'high' ? 'requires_maintenance' : 'normal',
+      tasksCount: 0,
+      raw: ws,
+    });
+  });
+
+  // Fire Turnarounds (Пожарные развороты МЧС)
+  fireTurnarounds.forEach((ft) => {
+    allItems.push({
+      id: ft.id,
+      code: ft.code,
+      name: ft.name,
+      type: 'fireTurnaround',
+      layerName: 'Пожарный разворот (МЧС)',
+      specs: `Радиус: ${ft.radiusMeters} м · Покрытие: ${ft.surfaceType} · Очистка зимой: ${ft.winterCleared ? 'Да' : 'Нет'} · Свободен: ${ft.isClearOfObstacles ? 'Да' : 'Загроможден'}`,
+      condition: !ft.isClearOfObstacles ? 'critical' : 'normal',
+      tasksCount: 0,
+      raw: ft,
+    });
+  });
+
+  // Inspection Points (Точки осмотра)
+  inspectionPoints.forEach((ip) => {
+    allItems.push({
+      id: ip.id,
+      code: `ТО-${ip.order}`,
+      name: ip.name,
+      type: 'inspectionPoint',
+      layerName: 'Маршрут осмотра',
+      specs: `${ip.category} · Цель: ${ip.targetAssetCode} · Периодичность: ${ip.frequency}`,
+      condition: 'normal',
+      tasksCount: 0,
+      raw: ip,
+    });
+  });
+
   // Filter items
   const filteredItems = allItems.filter((item) => {
     // Layer filter
     if (activeLayerTab === 'water') {
-      if (!item.layerName.includes('Водопровод') && item.type !== 'well' && !item.layerName.includes('Летний вывод')) return false;
+      if (!item.layerName.includes('Водопровод') && item.type !== 'well' && item.type !== 'fireHydrant' && !item.layerName.includes('Летний вывод')) return false;
     } else if (activeLayerTab === 'electricity') {
-      if (!item.layerName.includes('Электро') && !item.layerName.includes('Освещение') && item.type !== 'switchboard' && item.type !== 'substation') return false;
+      if (!item.layerName.includes('Электро') && !item.layerName.includes('Освещение') && item.type !== 'switchboard' && item.type !== 'substation' && item.type !== 'lightPole') return false;
     } else if (activeLayerTab === 'gas') {
-      if (!item.layerName.includes('Газ')) return false;
+      if (!item.layerName.includes('Газ') && item.type !== 'gasRegulator') return false;
     } else if (activeLayerTab === 'telecom') {
-      if (!item.layerName.includes('Слаботоч')) return false;
+      if (!item.layerName.includes('Слаботоч') && item.type !== 'wifiHotspot' && item.type !== 'cctvCamera' && !item.layerName.includes('Видеонаблюдение')) return false;
     } else if (activeLayerTab === 'valves') {
       if (item.type !== 'valve') return false;
     } else if (activeLayerTab === 'wells') {
@@ -272,6 +405,8 @@ export const LayerCatalogModal: React.FC<LayerCatalogModalProps> = ({
       if (item.type !== 'substation') return false;
     } else if (activeLayerTab === 'facilities') {
       if (item.type !== 'barrierGate' && item.type !== 'adminFacility') return false;
+    } else if (activeLayerTab === 'seasonal') {
+      if (item.type !== 'snowDump' && item.type !== 'wasteSite' && item.type !== 'fireTurnaround' && item.type !== 'inspectionPoint') return false;
     }
 
     // Condition filter
@@ -409,7 +544,7 @@ export const LayerCatalogModal: React.FC<LayerCatalogModalProps> = ({
                   activeLayerTab === 'telecom' ? 'bg-white text-blue-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                📡 Слаботочные сети
+                📡 Связь & CCTV ({cctvCameras.length + 3})
               </button>
               <button
                 onClick={() => setActiveLayerTab('facilities')}
@@ -418,6 +553,14 @@ export const LayerCatalogModal: React.FC<LayerCatalogModalProps> = ({
                 }`}
               >
                 🏛️ Инфраструктура ({barrierGates.length + adminFacilities.length})
+              </button>
+              <button
+                onClick={() => setActiveLayerTab('seasonal')}
+                className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
+                  activeLayerTab === 'seasonal' ? 'bg-white text-sky-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                ❄️ Снегоотвалы & МЧС / ТБО ({snowDumps.length + wasteSites.length + fireTurnarounds.length + inspectionPoints.length})
               </button>
             </div>
 
@@ -555,6 +698,17 @@ export const LayerCatalogModal: React.FC<LayerCatalogModalProps> = ({
                       <Edit3 className="w-3.5 h-3.5" />
                       <span>Правка</span>
                     </button>
+
+                    {onCopyItem && (
+                      <button
+                        onClick={() => onCopyItem(item.type, item.raw)}
+                        className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-semibold flex items-center gap-1 transition-colors text-xs border border-indigo-200"
+                        title="Клонировать / копировать объект со всем оборудованием"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Копия</span>
+                      </button>
+                    )}
 
                     {confirmDeleteId === item.id ? (
                       <div className="flex items-center gap-1 bg-rose-50 border border-rose-200 rounded-lg p-1 animate-fadeIn">

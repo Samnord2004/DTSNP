@@ -37,8 +37,8 @@ export const WinterWaterManagement: React.FC<WinterWaterManagementProps> = ({
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
-  const totalConnected = plots.filter((p) => p.utilities.winterWater.connected).length;
-  const totalFreePorts = wells.reduce((sum, w) => sum + (w.type === 'water_winter' ? w.freePorts : 0), 0);
+  const totalConnected = (plots || []).filter((p) => p?.utilities?.winterWater?.connected).length;
+  const totalFreePorts = (wells || []).reduce((sum, w) => sum + (w?.type === 'water_winter' ? (w.freePorts || 0) : 0), 0);
 
   const filteredRequests = requests.filter((r) => {
     if (filterStatus !== 'all' && r.status !== filterStatus) return false;
@@ -180,7 +180,7 @@ export const WinterWaterManagement: React.FC<WinterWaterManagementProps> = ({
                     <td className="py-3.5 px-4">
                       <div className="font-bold text-slate-900 flex items-center gap-1.5">
                         <span>Участок № {req.plotNumber}</span>
-                        <span className="text-slate-500 font-normal">({plot.street})</span>
+                        {plot?.street && <span className="text-slate-500 font-normal">({plot.street})</span>}
                       </div>
                       <span className="text-[11px] text-slate-600 block">{req.ownerName}</span>
                       <span className="text-[10px] text-slate-400 font-mono">{req.cadastralNumber}</span>
@@ -188,7 +188,7 @@ export const WinterWaterManagement: React.FC<WinterWaterManagementProps> = ({
 
                     <td className="py-3.5 px-4 whitespace-nowrap">
                       <span className="font-bold text-emerald-700 block">{req.selectedWellCode}</span>
-                      <span className="text-[11px] text-slate-500">{well.name}</span>
+                      <span className="text-[11px] text-slate-500">{well?.name || 'Колодец'}</span>
                       <span className="text-[10px] text-slate-500 font-mono block">
                         Давление: {req.pressureAtWellAtm} атм
                       </span>

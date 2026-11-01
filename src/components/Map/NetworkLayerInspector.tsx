@@ -9,7 +9,9 @@ import {
   Coordinates,
   BarrierGate,
   AdministrationFacility,
+  AssetPhoto,
 } from '../../types/index.ts';
+import { AssetPhotoGallery } from '../Common/AssetPhotoGallery';
 import {
   Wrench,
   CheckCircle,
@@ -35,11 +37,29 @@ import {
   Unlock,
   Move,
   Phone,
+  Copy,
 } from 'lucide-react';
 
 export interface NetworkLayerInspectorProps {
   selectedItem: {
-    type: 'pipeline' | 'well' | 'valve' | 'switchboard' | 'substation' | 'fireHydrant' | 'lightPole' | 'gasRegulator' | 'wifiHotspot' | 'barrierGate' | 'adminFacility';
+    type:
+      | 'pipeline'
+      | 'well'
+      | 'valve'
+      | 'switchboard'
+      | 'substation'
+      | 'fireHydrant'
+      | 'waterMeteringNode'
+      | 'lightPole'
+      | 'gasRegulator'
+      | 'wifiHotspot'
+      | 'barrierGate'
+      | 'adminFacility'
+      | 'wasteSite'
+      | 'snowDump'
+      | 'fireTurnaround'
+      | 'inspectionPoint'
+      | 'cctvCamera';
     data: any;
   } | null;
   isObjectsLocked?: boolean;
@@ -48,9 +68,11 @@ export interface NetworkLayerInspectorProps {
   onToggleItemLock?: (id: string) => void;
   onClose: () => void;
   onEdit: (type: string, data: any) => void;
+  onCopy?: (type: string, data: any) => void;
   onDelete: (type: string, id: string) => void;
   onToggleValve?: (valveId: string) => void;
   onStartWinterConnection?: (well: Well) => void;
+  onUpdatePhotos?: (type: string, id: string, photos: AssetPhoto[]) => void;
 }
 
 export const NetworkLayerInspector: React.FC<NetworkLayerInspectorProps> = ({
@@ -61,9 +83,11 @@ export const NetworkLayerInspector: React.FC<NetworkLayerInspectorProps> = ({
   onToggleItemLock,
   onClose,
   onEdit,
+  onCopy,
   onDelete,
   onToggleValve,
   onStartWinterConnection,
+  onUpdatePhotos,
 }) => {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
@@ -150,14 +174,26 @@ export const NetworkLayerInspector: React.FC<NetworkLayerInspectorProps> = ({
         return 'Трансформаторная подстанция КТПН 10/0.4кВ';
       case 'fireHydrant':
         return 'Пожарный гидрант ПГ';
+      case 'waterMeteringNode':
+        return 'Узел учёта воды (УУВ)';
       case 'lightPole':
         return 'Опора освещения / Уличный фонарь';
       case 'gasRegulator':
         return 'Газорегуляторный пункт шкафной (ГРПШ)';
       case 'wifiHotspot':
         return 'Точка беспроводного доступа Wi-Fi';
+      case 'cctvCamera':
+        return 'Камера видеонаблюдения (CCTV & Опора ЛЭП)';
       case 'barrierGate':
         return 'Шлагбаум автоматический';
+      case 'wasteSite':
+        return 'Площадка сбора ТБО (Мусорные баки)';
+      case 'snowDump':
+        return 'Площадка снегоотвала (Зимняя очистка)';
+      case 'fireTurnaround':
+        return 'Пожарный разворот спецтехники МЧС';
+      case 'inspectionPoint':
+        return 'Точка чек-листа регулярного обхода';
       case 'adminFacility':
         return data.type === 'board_office'
           ? 'Здание Правления ДТСН'
@@ -284,6 +320,71 @@ export const NetworkLayerInspector: React.FC<NetworkLayerInspectorProps> = ({
             )}
           </div>
         </div>
+
+        {/* Highlight for Pipeline Ду 500 (Основная магистраль) */}
+        {(data.diameterMm === 500 || data.subType === 'main_500' || data.code?.includes('500') || data.code === 'МВ-500') && (
+          <div className="p-3 bg-gradient-to-r from-blue-900 via-sky-900 to-indigo-950 text-white rounded-xl shadow-md border-2 border-cyan-400 space-y-1 animate-fadeIn">
+            <div className="flex items-center gap-1.5 text-cyan-300 font-bold text-xs uppercase tracking-wider">
+              <span className="text-amber-400 text-sm">★</span>
+              <span>ОСНОВНАЯ МАГИСТРАЛЬ ВОДОПРОВОДА Ду 500</span>
+            </div>
+            <p className="text-[11px] text-slate-200 leading-snug">
+              Главный подающий коллектор водоснабжения ДТСН «Пенсионер». Диаметр 500 мм, сталь 530х9 в ППУ изоляции (ПЭ100 SDR11), рабочее давление 1.0 МПа (10 атм), глубина 2.8 м.
+            </p>
+          </div>
+        )}
+
+        {/* Specialized Card for Water Metering Node (УУВ) */}
+        {type === 'waterMeteringNode' && (
+          <div className="p-3.5 bg-gradient-to-br from-sky-50 to-indigo-50/60 border border-sky-300 rounded-xl space-y-2.5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-sky-950 text-xs flex items-center gap-1.5">
+                <Gauge className="w-4 h-4 text-sky-600" />
+                <span>Параметры узла учёта воды (УУВ)</span>
+              </span>
+              {data.hasTelemetry && (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                  GSM Телеметрия
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <div className="p-2 bg-white rounded-lg border border-sky-200 shadow-xs">
+                <span className="text-slate-400 block text-[10px]">Текущий мгновенный расход:</span>
+                <span className="font-mono font-bold text-sky-700 text-base">{data.currentFlowM3h ?? '34.2'} м³/ч</span>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-sky-200 shadow-xs">
+                <span className="text-slate-400 block text-[10px]">Накопленный объем:</span>
+                <span className="font-mono font-bold text-slate-900 text-base">{data.totalConsumptionM3 ?? '15840.5'} м³</span>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-sky-200 shadow-xs">
+                <span className="text-slate-400 block text-[10px]">Диаметр Ду:</span>
+                <span className="font-mono font-bold text-slate-800">Ду {data.pipeDiameterMm ?? 500} мм</span>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-sky-200 shadow-xs">
+                <span className="text-slate-400 block text-[10px]">Байпасная линия:</span>
+                <span className="font-bold text-emerald-700">{data.hasBypassLine ? '✓ Смонтирована' : '—'}</span>
+              </div>
+            </div>
+            <div className="p-2 bg-white rounded-lg border border-sky-100 space-y-1 text-[11px]">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Прибор:</span>
+                <span className="font-semibold text-slate-900">{data.meterModel || 'ВЗЛЕТ ЭР'} ({data.meterSerial || 'SN-784210'})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Пломба:</span>
+                <span className="font-mono font-bold text-slate-800">№ {data.sealNumber || 'ГОСТ-2026-РФ'}</span>
+              </div>
+              {(data.verificationDate || data.nextVerificationDate) && (
+                <div className="flex justify-between pt-1 border-t border-slate-100 text-[10px] text-slate-600">
+                  <span>Поверка: <b>{data.verificationDate || '—'}</b></span>
+                  <span>След. поверка: <b className="text-sky-800">{data.nextVerificationDate || '—'}</b></span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Technical Attributes Grid */}
         <div className="grid grid-cols-2 gap-2">
@@ -476,6 +577,116 @@ export const NetworkLayerInspector: React.FC<NetworkLayerInspectorProps> = ({
           </div>
         )}
 
+        {/* CCTV Camera Details */}
+        {type === 'cctvCamera' && (
+          <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 font-medium">Опора размещения (ЛЭП):</span>
+              <span className="font-mono font-bold text-slate-800">{data.poleCode || 'Опора освещения'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 font-medium">Разрешение матрицы:</span>
+              <span className="font-semibold text-slate-800">{data.resolution || '4MP Full HD'}</span>
+            </div>
+            <div className="text-xs pt-1 border-t border-sky-100">
+              <span className="text-slate-500 block text-[10px] font-medium">Сектор и направление обзора:</span>
+              <span className="font-semibold text-sky-950">{data.viewDirection} ({data.rotationAngle || 0}°)</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-sky-100">
+              <div>
+                <span className="text-slate-400 block text-[10px]">Глубина архива:</span>
+                <span className="font-bold text-slate-800">{data.cloudArchiveDays || 30} дней</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px]">IP адрес:</span>
+                <span className="font-mono text-slate-700">{data.ipAddress || '192.168.1.x'}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 pt-1 border-t border-sky-100 text-[11px]">
+              <span className={`flex items-center gap-1 ${data.hasNightVision ? 'text-emerald-700 font-semibold' : 'text-slate-400'}`}>
+                <CheckCircle className="w-3.5 h-3.5" />
+                <span>Ночное ИК-видение</span>
+              </span>
+              <span className={`flex items-center gap-1 ${data.hasPtz ? 'text-emerald-700 font-semibold' : 'text-slate-400'}`}>
+                <CheckCircle className="w-3.5 h-3.5" />
+                <span>PTZ 360°</span>
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Waste Collection Site Details */}
+        {type === 'wasteSite' && (
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 font-medium">Контейнеры для мусора:</span>
+              <span className="font-bold text-slate-900">{data.containersCount} шт. по {data.containerVolumeCbm} м³</span>
+            </div>
+            <div className="text-xs pt-1 border-t border-slate-200/60">
+              <span className="text-slate-500 block text-[10px] font-medium">График вывоза ТБО:</span>
+              <span className="font-semibold text-slate-800">{data.pickupSchedule}</span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+              <span className="text-slate-500 font-medium">Зимняя эксплуатация:</span>
+              <span className={`font-semibold ${data.isWinterActive ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {data.isWinterActive ? '✅ Действует зимой (подъезд чистится)' : '❌ Закрыта на зиму'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Snow Dump Details */}
+        {type === 'snowDump' && (
+          <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 font-medium">Вместимость площадки:</span>
+              <span className="font-bold text-sky-950">{data.capacityCubicMeters} м³</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 font-medium">Текущее заполнение:</span>
+              <span className="font-bold text-sky-800">{data.currentFillPercent}%</span>
+            </div>
+            <div className="text-xs pt-1 border-t border-sky-100">
+              <span className="text-slate-500 block text-[10px] font-medium">Допущенная спецтехника:</span>
+              <span className="font-medium text-slate-800">{data.allowedMachinery || 'МТЗ-82, КамАЗ, погрузчики'}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Fire Turnaround Details */}
+        {type === 'fireTurnaround' && (
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 font-medium">Радиус разворота МЧС:</span>
+              <span className="font-bold text-rose-950">{data.radiusMeters} метров ({data.surfaceType || 'щебень'})</span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-rose-100">
+              <span className="text-slate-500 font-medium">Зимняя расчистка снега:</span>
+              <span className={`font-semibold ${data.winterCleared ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {data.winterCleared ? '✅ Расчищен трактором' : '⚠️ Требуется уборка'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Inspection Point Details */}
+        {type === 'inspectionPoint' && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 font-medium">Порядковый номер в маршруте:</span>
+              <span className="font-bold text-emerald-950">№ {data.order}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 font-medium">Инспектируемый узел:</span>
+              <span className="font-mono font-bold text-slate-800">{data.targetAssetCode}</span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-emerald-100">
+              <span className="text-slate-500 font-medium">Регламент проверки:</span>
+              <span className="font-semibold text-slate-800">{data.frequency}</span>
+            </div>
+          </div>
+        )}
+
         {/* Administration Facility Details */}
         {type === 'adminFacility' && (
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
@@ -499,6 +710,25 @@ export const NetworkLayerInspector: React.FC<NetworkLayerInspectorProps> = ({
             </div>
           </div>
         )}
+
+        {/* Asset Photo Gallery (Wells, Valves, Substations, Hydrants, etc.) */}
+        <div className="pt-2 border-t border-slate-200">
+          <AssetPhotoGallery
+            photos={data.photos || []}
+            readOnly={!onUpdatePhotos}
+            onPhotosChange={
+              onUpdatePhotos
+                ? (newPhotos) => onUpdatePhotos(type, data.id, newPhotos)
+                : undefined
+            }
+            title={type === 'well' ? 'Фотографии колодца и арматуры' : `Фотографии ${data.code || 'объекта'}`}
+            emptyMessage={
+              type === 'well'
+                ? 'Нет фотографий оголовка, люка или узлов учета колодца'
+                : 'Нет прикрепленных фотографий данного объекта сети'
+            }
+          />
+        </div>
 
         {/* Well specific winter connection trigger */}
         {type === 'well' && data.freePorts > 0 && onStartWinterConnection && (
@@ -550,22 +780,36 @@ export const NetworkLayerInspector: React.FC<NetworkLayerInspectorProps> = ({
             <button
               type="button"
               onClick={() => setIsConfirmingDelete(true)}
-              className="px-3 py-2 text-rose-700 hover:bg-rose-100/80 active:bg-rose-200 rounded-xl font-semibold flex items-center gap-1.5 transition-colors"
+              className="px-3 py-2 text-rose-700 hover:bg-rose-100/80 active:bg-rose-200 rounded-xl font-semibold flex items-center gap-1.5 transition-colors cursor-pointer text-xs"
               title="Удалить данный объект из сети"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Удалить</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => onEdit(type, data)}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-semibold flex items-center gap-1.5 shadow-sm transition-all"
-              title="Редактировать паспорт объекта"
-            >
-              <Edit3 className="w-3.5 h-3.5 text-sky-400" />
-              <span>Редактировать</span>
-            </button>
+            <div className="flex items-center gap-2">
+              {onCopy && (
+                <button
+                  type="button"
+                  onClick={() => onCopy(type, data)}
+                  className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer text-xs"
+                  title="Создать копию данного элемента на карте"
+                >
+                  <Copy className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Копировать</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => onEdit(type, data)}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer text-xs"
+                title="Редактировать параметры и наполнение объекта"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-sky-400" />
+                <span>Редактировать</span>
+              </button>
+            </div>
           </div>
         )}
       </div>

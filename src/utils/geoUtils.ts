@@ -122,3 +122,100 @@ export function generateRoutePoints(from: Coordinates, to: Coordinates): Coordin
     { lat: to.lat, lng: to.lng },
   ];
 }
+
+/**
+ * Calculates geographic polygon area in square meters using Shoelace formula on local projection
+ */
+export function calculatePolygonAreaSqm(points: Coordinates[]): number {
+  if (!points || points.length < 3) return 0;
+  const R = 6371000;
+  const lat0 = (points[0].lat * Math.PI) / 180;
+  const cosLat0 = Math.cos(lat0);
+
+  const cartesian = points.map((p) => ({
+    x: ((p.lng * Math.PI) / 180) * R * cosLat0,
+    y: ((p.lat * Math.PI) / 180) * R,
+  }));
+
+  let sum = 0;
+  const n = cartesian.length;
+  for (let i = 0; i < n; i++) {
+    const next = (i + 1) % n;
+    sum += cartesian[i].x * cartesian[next].y - cartesian[next].x * cartesian[i].y;
+  }
+  return Math.round(Math.abs(sum) / 2);
+}
+
+/**
+ * Calculates polygon perimeter in meters
+ */
+export function calculatePolygonPerimeterMeters(points: Coordinates[]): number {
+  if (!points || points.length < 2) return 0;
+  let perimeter = 0;
+  for (let i = 0; i < points.length; i++) {
+    const next = (i + 1) % points.length;
+    perimeter += calculateDistanceMeters(points[i], points[next]);
+  }
+  return Math.round(perimeter * 10) / 10;
+}
+
+/**
+ * Calculates polygon centroid
+ */
+export function calculatePolygonCentroid(points: Coordinates[]): Coordinates {
+  if (!points || points.length === 0) return { lat: 0, lng: 0 };
+  let latSum = 0;
+  let lngSum = 0;
+  points.forEach((p) => {
+    latSum += p.lat;
+    lngSum += p.lng;
+  });
+  return {
+    lat: Number((latSum / points.length).toFixed(6)),
+    lng: Number((lngSum / points.length).toFixed(6)),
+  };
+}
+
+/**
+ * Finds the edge index i in polygon [0..n-1] closest to the given point
+ * so a new vertex can be inserted at i + 1
+ */
+export function findClosestEdgeIndex(point: Coordinates, polygon: Coordinates[]): number {
+  if (polygon.length < 2) return 0;
+  let minDistance = Infinity;
+  let bestIndex = 0;
+
+  for (let i = 0; i < polygon.length; i++) {
+    const next = (i + 1) % polygon.length;
+    const a = polygon[i];
+    const b = polygon[next];
+
+    // Distance from point to segment AB
+    const mid = {
+      lat: (a.lat + b.lat) / 2,
+      lng: (a.lng + b.lng) / 2,
+    };
+    const dist = calculateDistanceMeters(point, mid);
+    if (dist < minDistance) {
+      minDistance = dist;
+      bestIndex = i;
+    }
+  }
+
+  return bestIndex;
+}
+
+/**
+ * Ensures a polygon coordinate ring does not have a duplicated closing vertex
+ * so that vertices 0..N-1 are unique for Leaflet polygons and interactive point dragging.
+ */
+export function cleanPolygonRing(points: Coordinates[]): Coordinates[] {
+  if (!points || points.length < 3) return points || [];
+  const result = [...points];
+  const first = result[0];
+  const last = result[result.length - 1];
+  if (Math.abs(first.lat - last.lat) < 0.000001 && Math.abs(first.lng - last.lng) < 0.000001) {
+    result.pop();
+  }
+  return result;
+}

@@ -1,0 +1,106 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with role, contact info and permissions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "roleTitle": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "plotNumber": { "type": "number" },
+        "permissions": { "type": "object" }
+      },
+      "required": ["id", "name", "role", "email"]
+    },
+    "Plot": {
+      "title": "Plot",
+      "description": "Land parcel in DTSN Pensioner",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "number": { "type": "number" },
+        "cadastralNumber": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "areaSqm": { "type": "number" },
+        "polygon": { "type": "array" },
+        "coordinates": { "type": "object" },
+        "residencyType": { "type": "string" },
+        "utilities": { "type": "object" },
+        "street": { "type": "string" },
+        "photos": { "type": "array" }
+      },
+      "required": ["id", "number", "cadastralNumber"]
+    },
+    "Well": {
+      "title": "Well",
+      "description": "Inspection water well",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "coordinates": { "type": "object" },
+        "depthMeters": { "type": "number" },
+        "totalPorts": { "type": "number" },
+        "usedPorts": { "type": "number" },
+        "freePorts": { "type": "number" },
+        "photos": { "type": "array" }
+      },
+      "required": ["id", "code", "name"]
+    },
+    "NetworkAsset": {
+      "title": "NetworkAsset",
+      "description": "Infrastructure network element (valves, substations, switchboards, hydrants)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "coordinates": { "type": "object" },
+        "photos": { "type": "array" }
+      },
+      "required": ["id"]
+    },
+    "SystemSetting": {
+      "title": "SystemSetting",
+      "description": "System-wide boundaries and metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "polygon": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles and role settings"
+    },
+    "/plots/{plotId}": {
+      "schema": "Plot",
+      "description": "Land parcel plots and geometry"
+    },
+    "/wells/{wellId}": {
+      "schema": "Well",
+      "description": "Water wells and engineering nodes"
+    },
+    "/assets/{assetId}": {
+      "schema": "NetworkAsset",
+      "description": "Network assets: valves, substations, switchboards, hydrants, light poles"
+    },
+    "/settings/{settingId}": {
+      "schema": "SystemSetting",
+      "description": "Global settings and society boundary"
+    }
+  }
+}

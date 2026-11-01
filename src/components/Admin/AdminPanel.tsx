@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { UserProfile, MaintenanceRecord, UserRole } from '../../types/index.ts';
 import { UtilityConsumptionWidget } from './UtilityConsumptionWidget';
 import { MonthlyConsumptionAreaChart } from './MonthlyConsumptionAreaChart';
+import { UserProfileModal } from '../Profile/UserProfileModal';
 import {
   Users,
   Wrench,
@@ -15,6 +16,9 @@ import {
   Filter,
   BarChart3,
   TrendingUp,
+  Edit,
+  Camera,
+  MapPin,
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -24,6 +28,7 @@ interface AdminPanelProps {
   onUpdateUserPermissions: (userId: string, permissions: UserProfile['permissions']) => void;
   onAddMaintenanceRecord: (record: MaintenanceRecord) => void;
   onSwitchUser: (userId: string) => void;
+  onUpdateUserProfile?: (user: UserProfile) => void;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -33,11 +38,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onUpdateUserPermissions,
   onAddMaintenanceRecord,
   onSwitchUser,
+  onUpdateUserProfile,
 }) => {
   const [activeTab, setActiveTab] = useState<'analytics' | 'maintenance' | 'users'>('analytics');
   const [assetTypeFilter, setAssetTypeFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddingMaintenance, setIsAddingMaintenance] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
 
   // New Maintenance Form State
   const [assetCode, setAssetCode] = useState('КВ-04');
@@ -259,28 +266,67 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     isCurrent ? 'border-sky-300 bg-sky-50/40 shadow-sm' : 'border-slate-200 bg-white'
                   }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                        <span>{u.name}</span>
-                        {isCurrent && (
-                          <span className="px-2 py-0.5 bg-sky-100 text-sky-800 text-[10px] rounded-full font-mono font-semibold">
-                            Текущий вход
-                          </span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      {/* Avatar preview */}
+                      <div className="relative shrink-0">
+                        {u.avatarUrl ? (
+                          <img
+                            src={u.avatarUrl}
+                            alt={u.name}
+                            className="w-12 h-12 rounded-full object-cover border-2 border-sky-500 shadow-2xs"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-sky-600 text-white flex items-center justify-center font-bold text-sm shadow-2xs">
+                            {u.name
+                              .split(' ')
+                              .map((n) => n[0])
+                              .slice(0, 2)
+                              .join('')}
+                          </div>
                         )}
-                      </h4>
-                      <p className="text-xs text-sky-700 font-semibold">{u.roleTitle}</p>
-                      <p className="text-[11px] text-slate-500">{u.phone} · {u.email}</p>
+                      </div>
+
+                      <div>
+                        <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                          <span>{u.name}</span>
+                          {isCurrent && (
+                            <span className="px-2 py-0.5 bg-sky-100 text-sky-800 text-[10px] rounded-full font-mono font-semibold">
+                              Текущий вход
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-xs text-sky-700 font-semibold">{u.roleTitle}</p>
+                        <p className="text-[11px] text-slate-500">{u.phone} · {u.email}</p>
+                        {u.address && (
+                          <p className="text-[10px] text-slate-600 flex items-center gap-1 mt-0.5">
+                            <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span>{u.address} {u.plotNumber ? `(Уч. №${u.plotNumber})` : ''}</span>
+                          </p>
+                        )}
+                      </div>
                     </div>
 
-                    {!isCurrent && (
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
                       <button
-                        onClick={() => onSwitchUser(u.id)}
-                        className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors"
+                        type="button"
+                        onClick={() => setEditingUser(u)}
+                        className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold rounded-lg border border-sky-200 transition-colors flex items-center gap-1"
+                        title="Редактировать ФИО, телефон, e-mail, адрес и фото"
                       >
-                        Войти под ролью
+                        <Edit className="w-3 h-3" />
+                        <span>Изменить данные</span>
                       </button>
-                    )}
+
+                      {!isCurrent && (
+                        <button
+                          onClick={() => onSwitchUser(u.id)}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors"
+                        >
+                          Войти под ролью
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Permissions matrix */}
@@ -477,6 +523,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* MODAL: Edit User Profile (Personal details, avatar, contacts) */}
+      {editingUser && (
+        <UserProfileModal
+          isOpen={true}
+          user={editingUser}
+          isAdminEditing={true}
+          onClose={() => setEditingUser(null)}
+          onSave={(updated) => {
+            if (onUpdateUserProfile) {
+              onUpdateUserProfile(updated);
+            }
+            setEditingUser(null);
+          }}
+        />
       )}
     </div>
   );

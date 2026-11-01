@@ -22,6 +22,8 @@ import {
   AdministrationFacility,
   Switchboard,
   Coordinates,
+  CctvCamera,
+  WaterMeteringNode,
 } from '../types/index.ts';
 
 export const SOCIETY_INFO = {
@@ -53,6 +55,8 @@ export const INITIAL_USERS: UserProfile[] = [
     roleTitle: 'Председатель Правления',
     phone: '+7 (913) 900-11-22',
     email: 'chairman@dtsn-pensioner.ru',
+    address: 'г. Новосибирск, ул. Советская 18, кв. 42 / ДТСН уч. № 1',
+    avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
     permissions: {
       canApproveTU: true,
       canSignContracts: true,
@@ -69,6 +73,8 @@ export const INITIAL_USERS: UserProfile[] = [
     roleTitle: 'Главный инженер / Комендант',
     phone: '+7 (913) 912-34-56',
     email: 'engineer@dtsn-pensioner.ru',
+    address: 'ДТСН «Пенсионер», ул. Центральная, дом коменданта',
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
     permissions: {
       canApproveTU: true,
       canSignContracts: false,
@@ -85,6 +91,8 @@ export const INITIAL_USERS: UserProfile[] = [
     roleTitle: 'Член Правления (энергетика)',
     phone: '+7 (913) 888-22-33',
     email: 'alexeev@dtsn-pensioner.ru',
+    address: 'ДТСН «Пенсионер», 1-я Линия, уч. № 14',
+    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
     permissions: {
       canApproveTU: true,
       canSignContracts: false,
@@ -101,6 +109,8 @@ export const INITIAL_USERS: UserProfile[] = [
     roleTitle: 'Главный бухгалтер',
     phone: '+7 (913) 777-33-44',
     email: 'buh@dtsn-pensioner.ru',
+    address: 'г. Новосибирск, Красный проспект 72, кв. 15',
+    avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
     permissions: {
       canApproveTU: false,
       canSignContracts: false,
@@ -117,6 +127,8 @@ export const INITIAL_USERS: UserProfile[] = [
     roleTitle: 'Собственник уч. № 24 (Постоянно проживает)',
     phone: '+7 (913) 555-12-89',
     email: 'voronov.d@mail.ru',
+    address: 'ДТСН «Пенсионер», 2-я Линия, уч. № 24',
+    avatarUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80',
     plotNumber: 24,
     permissions: {
       canApproveTU: false,
@@ -220,6 +232,95 @@ export const INITIAL_WIFI_HOTSPOTS: WifiHotspot[] = [
   },
 ];
 
+// CCTV Cameras (Камеры видеонаблюдения ДТСН «Пенсионер»)
+export const INITIAL_CCTV_CAMERAS: CctvCamera[] = [
+  {
+    id: 'cam-1',
+    code: 'ВК-01',
+    name: 'Камера «Северный въезд & Шлагбаум»',
+    coordinates: { lat: LAT0 + 0.0036, lng: LNG0 - 0.0029 },
+    poleCode: 'ШЛ-01 / КПП-01',
+    resolution: '4MP (2560×1440) 30fps',
+    viewDirection: 'Въездные ворота, фиксация госномеров автотранспорта',
+    rotationAngle: 180,
+    cloudArchiveDays: 30,
+    hasNightVision: true,
+    hasPtz: false,
+    status: 'online',
+    ipAddress: '192.168.1.201',
+    notes: 'Распознавание автомобильных номеров LPR, ИК-подсветка до 50м.',
+    photos: [],
+  },
+  {
+    id: 'cam-2',
+    code: 'ВК-02',
+    name: 'Камера «Здание Правления & Парковка»',
+    coordinates: { lat: LAT0 + 0.0033, lng: LNG0 - 0.0020 },
+    poleCode: 'ЗП-01',
+    resolution: '4MP (2560×1440)',
+    viewDirection: 'Входная группа здания Правления, узел учета и парковка',
+    rotationAngle: 220,
+    cloudArchiveDays: 30,
+    hasNightVision: true,
+    hasPtz: false,
+    status: 'online',
+    ipAddress: '192.168.1.202',
+    notes: 'Подключена к локальному регистратору NVR и облаку Правления.',
+    photos: [],
+  },
+  {
+    id: 'cam-3',
+    code: 'ВК-03',
+    name: 'Камера поворотная PTZ «Центральная площадь»',
+    coordinates: { lat: LAT0 + 0.0007, lng: LNG0 + 0.0001 },
+    poleCode: 'Опора ЛЭП № 14',
+    resolution: '4MP Ultra-HD 25x оптический зум',
+    viewDirection: 'Круговой обзор 360° площади, детского городка и перекрестка 2-й Линии',
+    rotationAngle: 90,
+    cloudArchiveDays: 45,
+    hasNightVision: true,
+    hasPtz: true,
+    status: 'online',
+    ipAddress: '192.168.1.203',
+    notes: 'Поворотная скоростная купольная камера (PTZ), патрулирование по расписанию.',
+    photos: [],
+  },
+  {
+    id: 'cam-4',
+    code: 'ВК-04',
+    name: 'Камера «Южный пожарный выезд к реке»',
+    coordinates: { lat: LAT0 - 0.0029, lng: LNG0 + 0.0022 },
+    poleCode: 'ШЛ-02 / Опора № 28',
+    resolution: '4MP (2560×1440)',
+    viewDirection: 'Пожарный выезд к р. Обь, мониторинг береговой линии',
+    rotationAngle: 45,
+    cloudArchiveDays: 30,
+    hasNightVision: true,
+    hasPtz: false,
+    status: 'online',
+    ipAddress: '192.168.1.204',
+    notes: 'Автономное питание с буферным аккумулятором 24V.',
+    photos: [],
+  },
+  {
+    id: 'cam-5',
+    code: 'ВК-05',
+    name: 'Камера «Мусорная площадка ТБО-1 & Снегоотвал»',
+    coordinates: { lat: LAT0 + 0.0040, lng: LNG0 - 0.0033 },
+    poleCode: 'Опора ЛЭП № 04',
+    resolution: '4MP с детекцией движения',
+    viewDirection: 'Контейнерная площадка ТБО, подъезд мусоровоза и снегоотвал СО-1',
+    rotationAngle: 135,
+    cloudArchiveDays: 30,
+    hasNightVision: true,
+    hasPtz: false,
+    status: 'online',
+    ipAddress: '192.168.1.205',
+    notes: 'Детекция несанкционированного сброса строительного мусора.',
+    photos: [],
+  },
+];
+
 export const INITIAL_WELLS: Well[] = [
   {
     id: 'w-1',
@@ -244,6 +345,7 @@ export const INITIAL_WELLS: Well[] = [
       { id: 'v-w1-1', type: 'gate_valve', diameterMm: 150, state: 'open' },
       { id: 'v-w1-2', type: 'ball_valve', diameterMm: 50, state: 'open' },
     ],
+    photos: [],
   },
   {
     id: 'w-2',
@@ -315,6 +417,7 @@ export const INITIAL_WELLS: Well[] = [
       { id: 'v-w4-1', type: 'gate_valve', diameterMm: 100, state: 'open' },
       { id: 'v-w4-2', type: 'ball_valve', diameterMm: 32, state: 'closed' },
     ],
+    photos: [],
   },
   {
     id: 'w-5',
@@ -468,6 +571,7 @@ export const INITIAL_VALVES: Valve[] = [
     depthMeters: 3.2,
     installedYear: 2021,
     description: 'Магистральная задвижка с обрезиненным клином Hawle на вводе в ДТСН.',
+    photos: [],
   },
   {
     id: 'v-2',
@@ -543,6 +647,7 @@ export const INITIAL_SUBSTATIONS: Substation[] = [
     status: 'nominal',
     groundingResistanceOhm: 3.4,
     lastServiceDate: '2026-08-15',
+    photos: [],
   },
   {
     id: 'ktp-2',
@@ -611,7 +716,98 @@ export const INITIAL_GAS_REGULATOR: GasRegulatorStation = {
   filterDifferentialPressureKpa: 3.2,
 };
 
+// Узлы учёта воды (УУВ)
+export const INITIAL_WATER_METERING_NODES: WaterMeteringNode[] = [
+  {
+    id: 'wmn-01',
+    code: 'УУВ-01',
+    name: 'Головной коммерческий узел учёта воды (Магистраль Ду 500)',
+    coordinates: { lat: LAT0 + 0.0039, lng: LNG0 - 0.0032 },
+    locationDetails: 'Водозаборный павильон ДТСН, центральный ввод Ду 500',
+    meterType: 'ultrasonic',
+    meterModel: 'ВЗЛЕТ МР (УРСВ-510 ц)',
+    meterSerial: 'УЗВ-849201',
+    pipeDiameterMm: 500,
+    nominalFlowM3h: 250,
+    currentFlowM3h: 42.6,
+    totalConsumptionM3: 184520,
+    sealNumber: 'РСТ-77401',
+    verificationDate: '2025-06-12',
+    nextVerificationDate: '2029-06-12',
+    hasTelemetry: true,
+    hasBypassLine: true,
+    condition: 'excellent',
+    notes: 'Основной вводной коммерческий прибор учёта ДТСН «Пенсионер». Телеметрия передает ежечасные архивы в МУП Горводоканал.',
+  },
+  {
+    id: 'wmn-02',
+    code: 'УУВ-02',
+    name: 'Распределительный узел учёта Северный куст (Ду 110)',
+    coordinates: { lat: LAT0 + 0.0024, lng: LNG0 - 0.0019 },
+    locationDetails: 'Колодец КВ-02, 1-я Линия',
+    meterType: 'electromagnetic',
+    meterModel: 'ПРЭМ-50',
+    meterSerial: 'ПР-44912',
+    pipeDiameterMm: 110,
+    nominalFlowM3h: 40,
+    currentFlowM3h: 8.4,
+    totalConsumptionM3: 42910,
+    sealNumber: 'РСТ-89211',
+    verificationDate: '2024-11-05',
+    nextVerificationDate: '2028-11-05',
+    hasTelemetry: true,
+    hasBypassLine: true,
+    condition: 'normal',
+    notes: 'Узел технологического учёта расхода воды 1-й Линии и Северного массива участков.',
+  },
+  {
+    id: 'wmn-03',
+    code: 'УУВ-03',
+    name: 'Узел технологического учёта Центральный (Ду 110)',
+    coordinates: { lat: LAT0 - 0.0001, lng: LNG0 + 0.0002 },
+    locationDetails: 'Колодец КВ-04 (Центральный)',
+    meterType: 'ultrasonic',
+    meterModel: 'ВЗЛЕТ ТСР-024',
+    meterSerial: 'ТСР-10398',
+    pipeDiameterMm: 110,
+    nominalFlowM3h: 40,
+    currentFlowM3h: 11.2,
+    totalConsumptionM3: 56340,
+    sealNumber: 'РСТ-90142',
+    verificationDate: '2025-01-18',
+    nextVerificationDate: '2029-01-18',
+    hasTelemetry: true,
+    hasBypassLine: true,
+    condition: 'excellent',
+    notes: 'Узел балансового учёта центральной зоны водоснабжения товарищества.',
+  },
+];
+
 export const INITIAL_PIPELINES: PipelineSegment[] = [
+  // 0. Основная магистральная линия водопровода Ду 500
+  {
+    id: 'pipe-ww-trunk-500',
+    code: 'МВ-500',
+    networkType: 'water_winter',
+    subType: 'main_500',
+    path: [
+      { lat: LAT0 + 0.0042, lng: LNG0 - 0.0035 },
+      { lat: LAT0 + 0.0035, lng: LNG0 - 0.0028 },
+      { lat: LAT0 + 0.0024, lng: LNG0 - 0.0019 },
+      { lat: LAT0 + 0.0012, lng: LNG0 - 0.0008 },
+      { lat: LAT0 - 0.0001, lng: LNG0 + 0.0002 },
+      { lat: LAT0 - 0.0015, lng: LNG0 + 0.0011 },
+      { lat: LAT0 - 0.0028, lng: LNG0 + 0.0020 },
+      { lat: LAT0 - 0.0038, lng: LNG0 + 0.0029 },
+    ],
+    diameterMm: 500,
+    material: 'Сталь 530х9 в ППУ-ПЭ изоляции / ПЭ-100 SDR 11 DN500',
+    depthMeters: 3.0,
+    pressureNominal: '1.0 МПа (10.0 атм)',
+    installYear: 2020,
+    condition: 'excellent',
+    description: 'Основная магистральная линия водопровода Ду 500 мм централизованного водоснабжения ДТСН «Пенсионер»',
+  },
   // Winter Water Mains
   {
     id: 'pipe-ww-main-1',
@@ -903,6 +1099,7 @@ export const INITIAL_FIRE_HYDRANTS: FireHydrant[] = [
     accessibilityCondition: 'free',
     status: 'operational',
     lastTestDate: '2026-09-12',
+    photos: [],
   },
   {
     id: 'fh-2',
@@ -1034,16 +1231,15 @@ export const INITIAL_FIRE_TURNAROUNDS: FireTurnaround[] = [
 
 // Cadastral Boundary of DTSN Pensioner (Кадастровый квартал 54:19:112001, НСПД / Росреестр)
 export const DTSN_PENSIONER_BOUNDARY: Coordinates[] = [
-  { lat: LAT0 + 0.0041, lng: LNG0 - 0.0033 },
-  { lat: LAT0 + 0.0041, lng: LNG0 + 0.0016 },
-  { lat: LAT0 + 0.0033, lng: LNG0 + 0.0028 },
-  { lat: LAT0 + 0.0012, lng: LNG0 + 0.0030 },
-  { lat: LAT0 - 0.0016, lng: LNG0 + 0.0027 },
-  { lat: LAT0 - 0.0035, lng: LNG0 + 0.0022 },
-  { lat: LAT0 - 0.0035, lng: LNG0 - 0.0019 },
-  { lat: LAT0 - 0.0024, lng: LNG0 - 0.0033 },
-  { lat: LAT0 + 0.0012, lng: LNG0 - 0.0033 },
-  { lat: LAT0 + 0.0041, lng: LNG0 - 0.0033 },
+  { lat: Number((LAT0 + 0.0044).toFixed(6)), lng: Number((LNG0 - 0.0040).toFixed(6)) }, // Северо-Запад (въездная зона, КПП-01, СО-1)
+  { lat: Number((LAT0 + 0.0044).toFixed(6)), lng: Number((LNG0 + 0.0018).toFixed(6)) }, // Север (лесная полоса)
+  { lat: Number((LAT0 + 0.0035).toFixed(6)), lng: Number((LNG0 + 0.0032).toFixed(6)) }, // Северо-Восток
+  { lat: Number((LAT0 + 0.0012).toFixed(6)), lng: Number((LNG0 + 0.0034).toFixed(6)) }, // Восток (вдоль мелиоративного канала)
+  { lat: Number((LAT0 - 0.0018).toFixed(6)), lng: Number((LNG0 + 0.0030).toFixed(6)) }, // Юго-Восток
+  { lat: Number((LAT0 - 0.0040).toFixed(6)), lng: Number((LNG0 + 0.0024).toFixed(6)) }, // Юг (проезд к реке Обь)
+  { lat: Number((LAT0 - 0.0040).toFixed(6)), lng: Number((LNG0 - 0.0022).toFixed(6)) }, // Юго-Запад (за снегоотвалом СО-2)
+  { lat: Number((LAT0 - 0.0022).toFixed(6)), lng: Number((LNG0 - 0.0040).toFixed(6)) }, // Западная граница
+  { lat: Number((LAT0 + 0.0014).toFixed(6)), lng: Number((LNG0 - 0.0040).toFixed(6)) }, // Запад (подъездные пути)
 ];
 
 // Plots strictly inside the boundaries of DTSN Pensioner with official NSPD cadastral numbers
@@ -2330,6 +2526,7 @@ export const INITIAL_SWITCHBOARDS: Switchboard[] = [
       'Проверка опломбировки испытательной переходной коробки электросчетчика',
       'Замер температуры контактных соединений пирометром',
     ],
+    photos: [],
   },
   {
     id: 'sb-2',

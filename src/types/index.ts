@@ -14,6 +14,14 @@ export type UserRole = 'chairman' | 'board_member' | 'engineer' | 'accountant' |
 
 export type ResidencyType = 'permanent' | 'occasional' | 'summer_only';
 
+export interface AssetPhoto {
+  id: string;
+  url: string; // Base64 data URL or remote URL
+  caption?: string;
+  uploadedAt: string;
+  uploadedBy?: string;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -21,6 +29,8 @@ export interface UserProfile {
   roleTitle: string;
   phone: string;
   email: string;
+  address?: string;
+  avatarUrl?: string;
   plotNumber?: number;
   permissions: {
     canApproveTU: boolean;
@@ -69,6 +79,7 @@ export interface Well {
     diameterMm: number;
     state: 'open' | 'closed' | 'restricted';
   }[];
+  photos?: AssetPhoto[];
 }
 
 export interface Valve {
@@ -87,6 +98,7 @@ export interface Valve {
   deviceSchematic?: string;
   maintenanceTasks?: string[];
   description: string;
+  photos?: AssetPhoto[];
 }
 
 export interface Substation {
@@ -110,6 +122,7 @@ export interface Substation {
   deviceSchematic?: string;
   maintenanceTasks?: string[];
   lastServiceDate: string;
+  photos?: AssetPhoto[];
 }
 
 export interface Switchboard {
@@ -127,6 +140,7 @@ export interface Switchboard {
   installationYear: number;
   deviceSchematic: string;
   maintenanceTasks: string[];
+  photos?: AssetPhoto[];
 }
 
 export interface LightPole {
@@ -138,6 +152,7 @@ export interface LightPole {
   isDutyLight: boolean;
   status: 'working' | 'faulty' | 'maintenance';
   hasPhotoSensor: boolean;
+  photos?: AssetPhoto[];
 }
 
 export interface WifiHotspot {
@@ -150,6 +165,25 @@ export interface WifiHotspot {
   frequency: '2.4 GHz / 5 GHz';
   status: 'online' | 'offline';
   ipAddress: string;
+  photos?: AssetPhoto[];
+}
+
+export interface CctvCamera {
+  id: string;
+  code: string; // e.g. "ВК-01"
+  name: string;
+  coordinates: Coordinates;
+  poleCode?: string; // e.g. "Опора № 12" / "КПП-01"
+  resolution: string; // e.g. "4MP (2560x1440)"
+  viewDirection: string; // e.g. "Въездная группа / Шлагбаум"
+  rotationAngle?: number; // 0..360 deg
+  cloudArchiveDays: number;
+  hasNightVision: boolean;
+  hasPtz: boolean;
+  status: 'online' | 'offline' | 'maintenance';
+  ipAddress?: string;
+  notes?: string;
+  photos?: AssetPhoto[];
 }
 
 export interface BarrierGate {
@@ -161,6 +195,7 @@ export interface BarrierGate {
   openByPhone: string;
   status: 'operational' | 'manual_mode' | 'fault';
   winterHeatedDrive: boolean;
+  photos?: AssetPhoto[];
 }
 
 export interface AdministrationFacility {
@@ -173,6 +208,7 @@ export interface AdministrationFacility {
   workingHours: string;
   hasCctv: boolean;
   hasBackupGenerator: boolean;
+  photos?: AssetPhoto[];
 }
 
 export interface GasRegulatorStation {
@@ -187,6 +223,32 @@ export interface GasRegulatorStation {
   status: 'nominal' | 'warning';
   lastCheckDate: string;
   filterDifferentialPressureKpa: number;
+  photos?: AssetPhoto[];
+}
+
+export interface WaterMeteringNode {
+  id: string;
+  code: string; // e.g. "УУВ-01"
+  name: string; // e.g. "Головной коммерческий узел учёта воды Ду 500"
+  coordinates: Coordinates;
+  locationDetails?: string;
+  meterType: 'ultrasonic' | 'electromagnetic' | 'mechanical_turbine' | 'vortex' | 'mechanical_pulse' | 'vane_wheel' | 'commercial';
+  meterModel: string; // e.g. "ВЗЛЕТ МР (УРСВ-510 ц)", "ПРЭМ-50"
+  meterSerial: string;
+  pipeDiameterMm: number; // 500, 110, 63 etc.
+  nominalFlowM3h: number; // Номинальный расход м³/ч
+  currentFlowM3h?: number; // Текущий мгновенный расход м³/ч
+  totalConsumptionM3?: number; // Накопленный расход м³
+  sealNumber: string; // Номер пломбы
+  verificationDate: string; // Дата последней поверки
+  nextVerificationDate: string; // Срок очередной поверки
+  hasTelemetry: boolean; // Передача данных GSM/NB-IoT
+  hasBypassLine: boolean; // Обводная линия с опломбированной задвижкой
+  condition: 'excellent' | 'normal' | 'requires_maintenance' | 'critical';
+  deviceSchematic?: string;
+  maintenanceTasks?: string[];
+  notes?: string;
+  photos?: AssetPhoto[];
 }
 
 export interface PipelineSegment {
@@ -197,6 +259,7 @@ export interface PipelineSegment {
     | 'winter'
     | 'summer'
     | 'summer_tap'
+    | 'main_500'
     | 'medium_pressure'
     | 'low_pressure'
     | 'drainage'
@@ -216,6 +279,7 @@ export interface PipelineSegment {
   deviceSchematic?: string;
   maintenanceTasks?: string[];
   description?: string;
+  photos?: AssetPhoto[];
 }
 
 export interface Plot {
@@ -230,6 +294,7 @@ export interface Plot {
   winterClearingPriority: 1 | 2 | 3; // 1 = расчистка в 1-ю очередь (постоянное проживание), 2 = выезд по заявкам, 3 = плановый
   coordinates: Coordinates;
   polygon: Coordinates[];
+  photos?: AssetPhoto[];
   utilities: {
     winterWater: {
       connected: boolean;
@@ -269,6 +334,7 @@ export interface FireHydrant {
   accessibilityCondition: 'free' | 'snow_covered' | 'blocked';
   status: 'operational' | 'requires_repair';
   lastTestDate: string;
+  photos?: AssetPhoto[];
 }
 
 export interface SnowDump {
@@ -384,7 +450,7 @@ export interface MaintenanceRecord {
   id: string;
   assetId: string;
   assetCode: string;
-  assetType: 'well' | 'pipeline' | 'substation' | 'hydrant' | 'road' | 'stormwater' | 'barrier' | 'facility' | 'valve' | 'switchboard';
+  assetType: 'well' | 'pipeline' | 'substation' | 'hydrant' | 'road' | 'stormwater' | 'barrier' | 'facility' | 'valve' | 'switchboard' | 'waterMeteringNode';
   date: string;
   performedBy: string;
   workDescription: string;

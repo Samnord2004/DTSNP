@@ -24,6 +24,9 @@ import {
   BarrierGate,
   AdministrationFacility,
   Switchboard,
+  AssetPhoto,
+  CctvCamera,
+  WaterMeteringNode,
 } from './types/index.ts';
 import {
   INITIAL_PLOTS,
@@ -48,6 +51,8 @@ import {
   INITIAL_BARRIER_GATES,
   INITIAL_ADMIN_FACILITIES,
   INITIAL_SWITCHBOARDS,
+  INITIAL_CCTV_CAMERAS,
+  INITIAL_WATER_METERING_NODES,
   SOCIETY_INFO,
   DTSN_PENSIONER_BOUNDARY,
 } from './data/mockData';
@@ -77,6 +82,7 @@ import {
   apiSavePlot,
   apiUpdateCoordinates,
 } from './utils/api';
+import { loadFromStorage, saveToStorage } from './utils/storage';
 import { findNearestWellWithFreePorts } from './utils/geoUtils';
 import { Navbar } from './components/Navbar';
 import { EngineeringMap } from './components/Map/EngineeringMap';
@@ -92,39 +98,140 @@ import { MapPin, Droplet, Shield, Calendar, Users, Home, RotateCw, Snowflake, Su
 export default function App() {
   // Navigation & 4-Season Mode State
   const [activeTab, setActiveTab] = useState<'map' | 'winter_water' | 'inspections' | 'schedule' | 'plots' | 'admin'>('map');
-  const [season, setSeason] = useState<SeasonMode>('winter');
+  const [season, setSeason] = useState<SeasonMode>(() =>
+    loadFromStorage('dtsn_active_season', 'winter')
+  );
 
-  // Boundary Points (Territory contour saved in PostgreSQL)
-  const [boundaryPoints, setBoundaryPoints] = useState<Coordinates[]>(DTSN_PENSIONER_BOUNDARY);
+  // Boundary Points (Territory contour saved in PostgreSQL & LocalStorage)
+  const [boundaryPoints, setBoundaryPoints] = useState<Coordinates[]>(() => {
+    const loaded = loadFromStorage<Coordinates[]>('dtsn_boundary', DTSN_PENSIONER_BOUNDARY);
+    if (Array.isArray(loaded) && loaded.length >= 3 && loaded.every((pt) => pt && typeof pt.lat === 'number')) {
+      return loaded;
+    }
+    return DTSN_PENSIONER_BOUNDARY;
+  });
   const [isCloudSqlLoaded, setIsCloudSqlLoaded] = useState<boolean>(false);
 
-  // Users & Active Profile
-  const [users, setUsers] = useState<UserProfile[]>(INITIAL_USERS);
-  const [currentUserId, setCurrentUserId] = useState<string>('u-1');
-  const currentUser = users.find((u) => u.id === currentUserId) || users[0];
+  // Users & Active Profile (persisted)
+  const [users, setUsers] = useState<UserProfile[]>(() =>
+    loadFromStorage('dtsn_users', INITIAL_USERS)
+  );
+  const [currentUserId, setCurrentUserId] = useState<string>(() =>
+    loadFromStorage('dtsn_current_user_id', 'u-1')
+  );
+  const rawCurrentUser = (users && users.length > 0 ? users.find((u) => u.id === currentUserId) || users[0] : null) || INITIAL_USERS[0];
+  const currentUser: UserProfile = {
+    ...INITIAL_USERS[0],
+    ...rawCurrentUser,
+    permissions: {
+      ...INITIAL_USERS[0].permissions,
+      ...(rawCurrentUser?.permissions || {}),
+    },
+  };
 
-  // Core Datasets
-  const [plots, setPlots] = useState<Plot[]>(INITIAL_PLOTS);
-  const [wells, setWells] = useState<Well[]>(INITIAL_WELLS);
-  const [valves, setValves] = useState<Valve[]>(INITIAL_VALVES);
-  const [substations, setSubstations] = useState<Substation[]>(INITIAL_SUBSTATIONS);
-  const [lightPoles, setLightPoles] = useState<LightPole[]>(INITIAL_LIGHT_POLES);
-  const [gasRegulator, setGasRegulator] = useState<GasRegulatorStation>(INITIAL_GAS_REGULATOR);
-  const [pipelines, setPipelines] = useState<PipelineSegment[]>(INITIAL_PIPELINES);
-  const [fireHydrants, setFireHydrants] = useState<FireHydrant[]>(INITIAL_FIRE_HYDRANTS);
-  const [snowDumps, setSnowDumps] = useState<SnowDump[]>(INITIAL_SNOW_DUMPS);
-  const [wasteSites, setWasteSites] = useState<WasteCollectionSite[]>(INITIAL_WASTE_SITES);
-  const [fireTurnarounds, setFireTurnarounds] = useState<FireTurnaround[]>(INITIAL_FIRE_TURNAROUNDS);
-  const [inspectionPoints, setInspectionPoints] = useState<InspectionCheckPoint[]>(INITIAL_INSPECTION_POINTS);
-  const [inspectionLogs, setInspectionLogs] = useState<InspectionLogEntry[]>(INITIAL_INSPECTION_LOGS);
-  const [workTasks, setWorkTasks] = useState<WorkTask[]>(INITIAL_WORK_TASKS);
-  const [estimates, setEstimates] = useState<WorkEstimate[]>(INITIAL_ESTIMATES);
-  const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>(INITIAL_MAINTENANCE_RECORDS);
-  const [winterRequests, setWinterRequests] = useState<WinterConnectionRequest[]>(INITIAL_WINTER_REQUESTS);
-  const [wifiHotspots, setWifiHotspots] = useState<WifiHotspot[]>(INITIAL_WIFI_HOTSPOTS);
-  const [barrierGates, setBarrierGates] = useState<BarrierGate[]>(INITIAL_BARRIER_GATES);
-  const [adminFacilities, setAdminFacilities] = useState<AdministrationFacility[]>(INITIAL_ADMIN_FACILITIES);
-  const [switchboards, setSwitchboards] = useState<Switchboard[]>(INITIAL_SWITCHBOARDS);
+  // Core Datasets (Loaded from LocalStorage to avoid losing edited networks/polygons)
+  const [plots, setPlots] = useState<Plot[]>(() => {
+    const loaded = loadFromStorage<Plot[]>('dtsn_plots', INITIAL_PLOTS);
+    if (!Array.isArray(loaded) || loaded.length === 0) return INITIAL_PLOTS;
+    return loaded.map((p) => {
+      const canonical = INITIAL_PLOTS.find((ip) => ip.id === p.id || ip.number === p.number) || INITIAL_PLOTS[0];
+      return {
+        ...canonical,
+        ...p,
+        coordinates: p?.coordinates && typeof p.coordinates.lat === 'number' ? p.coordinates : canonical.coordinates,
+        polygon: Array.isArray(p?.polygon) && p.polygon.length >= 3 ? p.polygon : canonical.polygon,
+        utilities: {
+          ...canonical.utilities,
+          ...(p?.utilities || {}),
+          winterWater: {
+            ...canonical.utilities.winterWater,
+            ...(p?.utilities?.winterWater || {}),
+          },
+          electricity: {
+            ...canonical.utilities.electricity,
+            ...(p?.utilities?.electricity || {}),
+          },
+          gas: {
+            ...canonical.utilities.gas,
+            ...(p?.utilities?.gas || {}),
+          },
+        },
+      };
+    });
+  });
+  const [wells, setWells] = useState<Well[]>(() =>
+    loadFromStorage('dtsn_wells', INITIAL_WELLS)
+  );
+  const [valves, setValves] = useState<Valve[]>(() =>
+    loadFromStorage('dtsn_valves', INITIAL_VALVES)
+  );
+  const [substations, setSubstations] = useState<Substation[]>(() =>
+    loadFromStorage('dtsn_substations', INITIAL_SUBSTATIONS)
+  );
+  const [lightPoles, setLightPoles] = useState<LightPole[]>(() =>
+    loadFromStorage('dtsn_light_poles', INITIAL_LIGHT_POLES)
+  );
+  const [gasRegulator, setGasRegulator] = useState<GasRegulatorStation>(() => {
+    const loaded = loadFromStorage<GasRegulatorStation>('dtsn_gas_regulator', INITIAL_GAS_REGULATOR);
+    if (!loaded || !loaded.coordinates || typeof loaded.coordinates.lat !== 'number') {
+      return INITIAL_GAS_REGULATOR;
+    }
+    return {
+      ...INITIAL_GAS_REGULATOR,
+      ...loaded,
+    };
+  });
+  const [pipelines, setPipelines] = useState<PipelineSegment[]>(() =>
+    loadFromStorage('dtsn_pipelines', INITIAL_PIPELINES)
+  );
+  const [fireHydrants, setFireHydrants] = useState<FireHydrant[]>(() =>
+    loadFromStorage('dtsn_fire_hydrants', INITIAL_FIRE_HYDRANTS)
+  );
+  const [snowDumps, setSnowDumps] = useState<SnowDump[]>(() =>
+    loadFromStorage('dtsn_snow_dumps', INITIAL_SNOW_DUMPS)
+  );
+  const [wasteSites, setWasteSites] = useState<WasteCollectionSite[]>(() =>
+    loadFromStorage('dtsn_waste_sites', INITIAL_WASTE_SITES)
+  );
+  const [fireTurnarounds, setFireTurnarounds] = useState<FireTurnaround[]>(() =>
+    loadFromStorage('dtsn_fire_turnarounds', INITIAL_FIRE_TURNAROUNDS)
+  );
+  const [inspectionPoints, setInspectionPoints] = useState<InspectionCheckPoint[]>(() =>
+    loadFromStorage('dtsn_inspection_points', INITIAL_INSPECTION_POINTS)
+  );
+  const [inspectionLogs, setInspectionLogs] = useState<InspectionLogEntry[]>(() =>
+    loadFromStorage('dtsn_inspection_logs', INITIAL_INSPECTION_LOGS)
+  );
+  const [workTasks, setWorkTasks] = useState<WorkTask[]>(() =>
+    loadFromStorage('dtsn_work_tasks', INITIAL_WORK_TASKS)
+  );
+  const [estimates, setEstimates] = useState<WorkEstimate[]>(() =>
+    loadFromStorage('dtsn_estimates', INITIAL_ESTIMATES)
+  );
+  const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>(() =>
+    loadFromStorage('dtsn_maintenance_records', INITIAL_MAINTENANCE_RECORDS)
+  );
+  const [winterRequests, setWinterRequests] = useState<WinterConnectionRequest[]>(() =>
+    loadFromStorage('dtsn_winter_requests', INITIAL_WINTER_REQUESTS)
+  );
+  const [wifiHotspots, setWifiHotspots] = useState<WifiHotspot[]>(() =>
+    loadFromStorage('dtsn_wifi_hotspots', INITIAL_WIFI_HOTSPOTS)
+  );
+  const [barrierGates, setBarrierGates] = useState<BarrierGate[]>(() =>
+    loadFromStorage('dtsn_barrier_gates', INITIAL_BARRIER_GATES)
+  );
+  const [adminFacilities, setAdminFacilities] = useState<AdministrationFacility[]>(() =>
+    loadFromStorage('dtsn_admin_facilities', INITIAL_ADMIN_FACILITIES)
+  );
+  const [switchboards, setSwitchboards] = useState<Switchboard[]>(() =>
+    loadFromStorage('dtsn_switchboards', INITIAL_SWITCHBOARDS)
+  );
+  const [cctvCameras, setCctvCameras] = useState<CctvCamera[]>(() =>
+    loadFromStorage('dtsn_cctv_cameras', INITIAL_CCTV_CAMERAS)
+  );
+  const [waterMeteringNodes, setWaterMeteringNodes] = useState<WaterMeteringNode[]>(() =>
+    loadFromStorage('dtsn_water_metering_nodes', INITIAL_WATER_METERING_NODES)
+  );
 
   // Interaction State
   const [selectedPlotId, setSelectedPlotId] = useState<string | null>(null);
@@ -173,13 +280,36 @@ export default function App() {
     // well selection
   };
 
+  // Season & User Switching with persistence
+  const handleSeasonChange = (newSeason: SeasonMode) => {
+    setSeason(newSeason);
+    saveToStorage('dtsn_active_season', newSeason);
+  };
+
+  const handleSwitchUser = (userId: string) => {
+    setCurrentUserId(userId);
+    saveToStorage('dtsn_current_user_id', userId);
+  };
+
+  const handleUpdateUserProfile = (updatedUser: UserProfile) => {
+    setUsers((prev) => {
+      const next = prev.map((u) => (u.id === updatedUser.id ? updatedUser : u));
+      saveToStorage('dtsn_users', next);
+      return next;
+    });
+  };
+
   // Save New Winter Connection Request
   const handleSaveWinterRequest = (newRequest: WinterConnectionRequest) => {
-    setWinterRequests((prev) => [newRequest, ...prev]);
+    setWinterRequests((prev) => {
+      const next = [newRequest, ...prev];
+      saveToStorage('dtsn_winter_requests', next);
+      return next;
+    });
 
     // Update Plot status
-    setPlots((prev) =>
-      prev.map((p) => {
+    setPlots((prev) => {
+      const next = prev.map((p) => {
         if (p.number === newRequest.plotNumber) {
           return {
             ...p,
@@ -187,7 +317,7 @@ export default function App() {
               ...p.utilities,
               winterWater: {
                 ...p.utilities.winterWater,
-                status: 'tu_issued',
+                status: 'tu_issued' as const,
                 wellId: newRequest.selectedWellId,
                 tuNumber: `ТУ-В-2026/${p.number}`,
               },
@@ -195,12 +325,14 @@ export default function App() {
           };
         }
         return p;
-      })
-    );
+      });
+      saveToStorage('dtsn_plots', next);
+      return next;
+    });
 
     // Update Well ports
-    setWells((prev) =>
-      prev.map((w) => {
+    setWells((prev) => {
+      const next = prev.map((w) => {
         if (w.id === newRequest.selectedWellId && w.freePorts > 0) {
           return {
             ...w,
@@ -209,8 +341,10 @@ export default function App() {
           };
         }
         return w;
-      })
-    );
+      });
+      saveToStorage('dtsn_wells', next);
+      return next;
+    });
 
     // Add Audit Log in Maintenance Records
     const newMaint: MaintenanceRecord = {
@@ -224,7 +358,7 @@ export default function App() {
       nextScheduledDate: '2026-11-01',
       costRub: 0,
     };
-    setMaintenanceRecords((prev) => [newMaint, ...prev]);
+    handleAddMaintenanceRecord(newMaint);
 
     setIsWizardOpen(false);
   };
@@ -232,23 +366,25 @@ export default function App() {
   // Approve & Sign Package in Modal
   const handleApproveAndSignPackage = () => {
     if (!documentModalData) return;
-    const { request, plot, well } = documentModalData;
+    const { request, plot } = documentModalData;
 
-    setWinterRequests((prev) =>
-      prev.map((r) => {
+    setWinterRequests((prev) => {
+      const next = prev.map((r) => {
         if (r.id === request.id) {
           return {
             ...r,
             approvedByChairman: true,
             approvedByEngineer: true,
-            status: 'contract_signed',
+            status: 'contract_signed' as const,
             contractNumber: `ДЗВ-${plot.number}/26`,
             contractSignDate: new Date().toISOString().split('T')[0],
           };
         }
         return r;
-      })
-    );
+      });
+      saveToStorage('dtsn_winter_requests', next);
+      return next;
+    });
 
     setDocumentModalData((prev) =>
       prev
@@ -268,48 +404,72 @@ export default function App() {
 
   // Inspection Log Handlers
   const handleAddInspectionLog = (newEntry: InspectionLogEntry) => {
-    setInspectionLogs((prev) => [newEntry, ...prev]);
+    setInspectionLogs((prev) => {
+      const next = [newEntry, ...prev];
+      saveToStorage('dtsn_inspection_logs', next);
+      return next;
+    });
   };
 
   const handleResolveInspectionLog = (id: string) => {
-    setInspectionLogs((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, resolved: true, resolvedDate: new Date().toISOString().split('T')[0] } : l))
-    );
+    setInspectionLogs((prev) => {
+      const next = prev.map((l) => (l.id === id ? { ...l, resolved: true, resolvedDate: new Date().toISOString().split('T')[0] } : l));
+      saveToStorage('dtsn_inspection_logs', next);
+      return next;
+    });
   };
 
   // Work Schedule & Estimates Handlers
   const handleAddWorkTask = (task: WorkTask, estimate?: WorkEstimate) => {
-    setWorkTasks((prev) => [task, ...prev]);
+    setWorkTasks((prev) => {
+      const next = [task, ...prev];
+      saveToStorage('dtsn_work_tasks', next);
+      return next;
+    });
     if (estimate) {
-      setEstimates((prev) => [estimate, ...prev]);
+      setEstimates((prev) => {
+        const next = [estimate, ...prev];
+        saveToStorage('dtsn_estimates', next);
+        return next;
+      });
     }
   };
 
   const handleUpdateTaskStatus = (taskId: string, newStatus: WorkTask['status']) => {
-    setWorkTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
-    );
+    setWorkTasks((prev) => {
+      const next = prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t));
+      saveToStorage('dtsn_work_tasks', next);
+      return next;
+    });
   };
 
   const handleApproveEstimate = (estimateId: string) => {
-    setEstimates((prev) =>
-      prev.map((e) =>
+    setEstimates((prev) => {
+      const next = prev.map((e) =>
         e.id === estimateId
           ? { ...e, approvedByBoard: true, approvalDate: new Date().toISOString().split('T')[0] }
           : e
-      )
-    );
+      );
+      saveToStorage('dtsn_estimates', next);
+      return next;
+    });
   };
 
   // Admin Handlers
   const handleUpdateUserPermissions = (userId: string, permissions: UserProfile['permissions']) => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, permissions } : u))
-    );
+    setUsers((prev) => {
+      const next = prev.map((u) => (u.id === userId ? { ...u, permissions } : u));
+      saveToStorage('dtsn_users', next);
+      return next;
+    });
   };
 
   const handleAddMaintenanceRecord = (record: MaintenanceRecord) => {
-    setMaintenanceRecords((prev) => [record, ...prev]);
+    setMaintenanceRecords((prev) => {
+      const next = [record, ...prev];
+      saveToStorage('dtsn_maintenance_records', next);
+      return next;
+    });
   };
 
   // LOAD FROM POSTGRESQL ON MOUNT
@@ -344,12 +504,17 @@ export default function App() {
 
   const handleSaveBoundary = (newBoundary: Coordinates[]) => {
     setBoundaryPoints(newBoundary);
+    saveToStorage('dtsn_boundary', newBoundary);
     apiSaveBoundary(newBoundary);
   };
 
   // Network & Pipeline CRUD Handlers
   const handleAddPipeline = (newPipe: PipelineSegment) => {
-    setPipelines((prev) => [newPipe, ...prev]);
+    setPipelines((prev) => {
+      const next = [newPipe, ...prev];
+      saveToStorage('dtsn_pipelines', next);
+      return next;
+    });
     apiSavePipeline(newPipe);
     handleAddMaintenanceRecord({
       id: `mr-pipe-${Date.now()}`,
@@ -365,7 +530,11 @@ export default function App() {
   };
 
   const handleUpdatePipeline = (updatedPipe: PipelineSegment) => {
-    setPipelines((prev) => prev.map((p) => (p.id === updatedPipe.id ? updatedPipe : p)));
+    setPipelines((prev) => {
+      const next = prev.map((p) => (p.id === updatedPipe.id ? updatedPipe : p));
+      saveToStorage('dtsn_pipelines', next);
+      return next;
+    });
     apiSavePipeline(updatedPipe);
     handleAddMaintenanceRecord({
       id: `mr-pipe-upd-${Date.now()}`,
@@ -381,12 +550,20 @@ export default function App() {
   };
 
   const handleDeletePipeline = (id: string) => {
-    setPipelines((prev) => prev.filter((p) => p.id !== id));
+    setPipelines((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      saveToStorage('dtsn_pipelines', next);
+      return next;
+    });
     apiDeletePipeline(id);
   };
 
   const handleAddWell = (newWell: Well) => {
-    setWells((prev) => [newWell, ...prev]);
+    setWells((prev) => {
+      const next = [newWell, ...prev];
+      saveToStorage('dtsn_wells', next);
+      return next;
+    });
     apiSaveWell(newWell);
     handleAddMaintenanceRecord({
       id: `mr-well-${Date.now()}`,
@@ -402,7 +579,11 @@ export default function App() {
   };
 
   const handleUpdateWell = (updatedWell: Well) => {
-    setWells((prev) => prev.map((w) => (w.id === updatedWell.id ? updatedWell : w)));
+    setWells((prev) => {
+      const next = prev.map((w) => (w.id === updatedWell.id ? updatedWell : w));
+      saveToStorage('dtsn_wells', next);
+      return next;
+    });
     apiSaveWell(updatedWell);
     handleAddMaintenanceRecord({
       id: `mr-well-upd-${Date.now()}`,
@@ -418,12 +599,20 @@ export default function App() {
   };
 
   const handleDeleteWell = (id: string) => {
-    setWells((prev) => prev.filter((w) => w.id !== id));
+    setWells((prev) => {
+      const next = prev.filter((w) => w.id !== id);
+      saveToStorage('dtsn_wells', next);
+      return next;
+    });
     apiDeleteWell(id);
   };
 
   const handleAddValve = (newValve: Valve) => {
-    setValves((prev) => [newValve, ...prev]);
+    setValves((prev) => {
+      const next = [newValve, ...prev];
+      saveToStorage('dtsn_valves', next);
+      return next;
+    });
     apiSaveValve(newValve);
     handleAddMaintenanceRecord({
       id: `mr-valve-${Date.now()}`,
@@ -439,18 +628,26 @@ export default function App() {
   };
 
   const handleUpdateValve = (updatedValve: Valve) => {
-    setValves((prev) => prev.map((v) => (v.id === updatedValve.id ? updatedValve : v)));
+    setValves((prev) => {
+      const next = prev.map((v) => (v.id === updatedValve.id ? updatedValve : v));
+      saveToStorage('dtsn_valves', next);
+      return next;
+    });
     apiSaveValve(updatedValve);
   };
 
   const handleDeleteValve = (id: string) => {
-    setValves((prev) => prev.filter((v) => v.id !== id));
+    setValves((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      saveToStorage('dtsn_valves', next);
+      return next;
+    });
     apiDeleteValve(id);
   };
 
   const handleToggleValve = (valveId: string) => {
-    setValves((prev) =>
-      prev.map((v) => {
+    setValves((prev) => {
+      const next = prev.map((v) => {
         if (v.id === valveId) {
           const nextState: 'open' | 'closed' = v.state === 'open' ? 'closed' : 'open';
           const updated: Valve = { ...v, state: nextState };
@@ -469,12 +666,18 @@ export default function App() {
           return updated;
         }
         return v;
-      })
-    );
+      });
+      saveToStorage('dtsn_valves', next);
+      return next;
+    });
   };
 
   const handleAddSwitchboard = (newSb: Switchboard) => {
-    setSwitchboards((prev) => [newSb, ...prev]);
+    setSwitchboards((prev) => {
+      const next = [newSb, ...prev];
+      saveToStorage('dtsn_switchboards', next);
+      return next;
+    });
     apiSaveSwitchboard(newSb);
     handleAddMaintenanceRecord({
       id: `mr-sb-${Date.now()}`,
@@ -490,137 +693,580 @@ export default function App() {
   };
 
   const handleUpdateSwitchboard = (updatedSb: Switchboard) => {
-    setSwitchboards((prev) => prev.map((sb) => (sb.id === updatedSb.id ? updatedSb : sb)));
+    setSwitchboards((prev) => {
+      const next = prev.map((sb) => (sb.id === updatedSb.id ? updatedSb : sb));
+      saveToStorage('dtsn_switchboards', next);
+      return next;
+    });
     apiSaveSwitchboard(updatedSb);
   };
 
   const handleDeleteSwitchboard = (id: string) => {
-    setSwitchboards((prev) => prev.filter((sb) => sb.id !== id));
+    setSwitchboards((prev) => {
+      const next = prev.filter((sb) => sb.id !== id);
+      saveToStorage('dtsn_switchboards', next);
+      return next;
+    });
     apiDeleteSwitchboard(id);
   };
 
   const handleAddSubstation = (newSub: Substation) => {
-    setSubstations((prev) => [newSub, ...prev]);
+    setSubstations((prev) => {
+      const next = [newSub, ...prev];
+      saveToStorage('dtsn_substations', next);
+      return next;
+    });
     apiSaveSubstation(newSub);
   };
 
   const handleUpdateSubstation = (updatedSub: Substation) => {
-    setSubstations((prev) => prev.map((s) => (s.id === updatedSub.id ? updatedSub : s)));
+    setSubstations((prev) => {
+      const next = prev.map((s) => (s.id === updatedSub.id ? updatedSub : s));
+      saveToStorage('dtsn_substations', next);
+      return next;
+    });
     apiSaveSubstation(updatedSub);
   };
 
   const handleDeleteSubstation = (id: string) => {
-    setSubstations((prev) => prev.filter((s) => s.id !== id));
+    setSubstations((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      saveToStorage('dtsn_substations', next);
+      return next;
+    });
     apiDeleteSubstation(id);
   };
 
   const handleAddFireHydrant = (newFh: FireHydrant) => {
-    setFireHydrants((prev) => [newFh, ...prev]);
+    setFireHydrants((prev) => {
+      const next = [newFh, ...prev];
+      saveToStorage('dtsn_fire_hydrants', next);
+      return next;
+    });
     apiSaveFireHydrant(newFh);
   };
 
   const handleUpdateFireHydrant = (updatedFh: FireHydrant) => {
-    setFireHydrants((prev) => prev.map((fh) => (fh.id === updatedFh.id ? updatedFh : fh)));
+    setFireHydrants((prev) => {
+      const next = prev.map((fh) => (fh.id === updatedFh.id ? updatedFh : fh));
+      saveToStorage('dtsn_fire_hydrants', next);
+      return next;
+    });
     apiSaveFireHydrant(updatedFh);
   };
 
   const handleDeleteFireHydrant = (id: string) => {
-    setFireHydrants((prev) => prev.filter((fh) => fh.id !== id));
+    setFireHydrants((prev) => {
+      const next = prev.filter((fh) => fh.id !== id);
+      saveToStorage('dtsn_fire_hydrants', next);
+      return next;
+    });
     apiDeleteFireHydrant(id);
   };
 
   const handleAddLightPole = (newPole: LightPole) => {
-    setLightPoles((prev) => [newPole, ...prev]);
+    setLightPoles((prev) => {
+      const next = [newPole, ...prev];
+      saveToStorage('dtsn_light_poles', next);
+      return next;
+    });
     apiSaveLightPole(newPole);
   };
 
   const handleUpdateLightPole = (updatedPole: LightPole) => {
-    setLightPoles((prev) => prev.map((lp) => (lp.id === updatedPole.id ? updatedPole : lp)));
+    setLightPoles((prev) => {
+      const next = prev.map((lp) => (lp.id === updatedPole.id ? updatedPole : lp));
+      saveToStorage('dtsn_light_poles', next);
+      return next;
+    });
     apiSaveLightPole(updatedPole);
   };
 
   const handleDeleteLightPole = (id: string) => {
-    setLightPoles((prev) => prev.filter((lp) => lp.id !== id));
+    setLightPoles((prev) => {
+      const next = prev.filter((lp) => lp.id !== id);
+      saveToStorage('dtsn_light_poles', next);
+      return next;
+    });
     apiDeleteLightPole(id);
   };
 
   const handleAddWifiHotspot = (newHs: WifiHotspot) => {
-    setWifiHotspots((prev) => [newHs, ...prev]);
+    setWifiHotspots((prev) => {
+      const next = [newHs, ...prev];
+      saveToStorage('dtsn_wifi_hotspots', next);
+      return next;
+    });
     apiSaveWifiHotspot(newHs);
   };
 
   const handleUpdateWifiHotspot = (updatedHs: WifiHotspot) => {
-    setWifiHotspots((prev) => prev.map((wh) => (wh.id === updatedHs.id ? updatedHs : wh)));
+    setWifiHotspots((prev) => {
+      const next = prev.map((wh) => (wh.id === updatedHs.id ? updatedHs : wh));
+      saveToStorage('dtsn_wifi_hotspots', next);
+      return next;
+    });
     apiSaveWifiHotspot(updatedHs);
   };
 
   const handleDeleteWifiHotspot = (id: string) => {
-    setWifiHotspots((prev) => prev.filter((wh) => wh.id !== id));
+    setWifiHotspots((prev) => {
+      const next = prev.filter((wh) => wh.id !== id);
+      saveToStorage('dtsn_wifi_hotspots', next);
+      return next;
+    });
     apiDeleteWifiHotspot(id);
   };
 
   // Barrier Gates CRUD Handlers
   const handleAddBarrierGate = (newBg: BarrierGate) => {
-    setBarrierGates((prev) => [newBg, ...prev]);
+    setBarrierGates((prev) => {
+      const next = [newBg, ...prev];
+      saveToStorage('dtsn_barrier_gates', next);
+      return next;
+    });
     apiSaveBarrierGate(newBg);
   };
 
   const handleUpdateBarrierGate = (updatedBg: BarrierGate) => {
-    setBarrierGates((prev) => prev.map((bg) => (bg.id === updatedBg.id ? updatedBg : bg)));
+    setBarrierGates((prev) => {
+      const next = prev.map((bg) => (bg.id === updatedBg.id ? updatedBg : bg));
+      saveToStorage('dtsn_barrier_gates', next);
+      return next;
+    });
     apiSaveBarrierGate(updatedBg);
   };
 
   const handleDeleteBarrierGate = (id: string) => {
-    setBarrierGates((prev) => prev.filter((bg) => bg.id !== id));
+    setBarrierGates((prev) => {
+      const next = prev.filter((bg) => bg.id !== id);
+      saveToStorage('dtsn_barrier_gates', next);
+      return next;
+    });
     apiDeleteBarrierGate(id);
   };
 
   // Administration Facilities CRUD Handlers
   const handleAddAdminFacility = (newFac: AdministrationFacility) => {
-    setAdminFacilities((prev) => [newFac, ...prev]);
+    setAdminFacilities((prev) => {
+      const next = [newFac, ...prev];
+      saveToStorage('dtsn_admin_facilities', next);
+      return next;
+    });
     apiSaveAdminFacility(newFac);
   };
 
   const handleUpdateAdminFacility = (updatedFac: AdministrationFacility) => {
-    setAdminFacilities((prev) => prev.map((fac) => (fac.id === updatedFac.id ? updatedFac : fac)));
+    setAdminFacilities((prev) => {
+      const next = prev.map((fac) => (fac.id === updatedFac.id ? updatedFac : fac));
+      saveToStorage('dtsn_admin_facilities', next);
+      return next;
+    });
     apiSaveAdminFacility(updatedFac);
   };
 
   const handleDeleteAdminFacility = (id: string) => {
-    setAdminFacilities((prev) => prev.filter((fac) => fac.id !== id));
+    setAdminFacilities((prev) => {
+      const next = prev.filter((fac) => fac.id !== id);
+      saveToStorage('dtsn_admin_facilities', next);
+      return next;
+    });
     apiDeleteAdminFacility(id);
   };
 
+  // Waste Collection Sites CRUD Handlers
+  const handleAddWasteSite = (newWs: WasteCollectionSite) => {
+    setWasteSites((prev) => {
+      const next = [newWs, ...prev];
+      saveToStorage('dtsn_waste_sites', next);
+      return next;
+    });
+  };
+
+  const handleUpdateWasteSite = (updatedWs: WasteCollectionSite) => {
+    setWasteSites((prev) => {
+      const next = prev.map((ws) => (ws.id === updatedWs.id ? updatedWs : ws));
+      saveToStorage('dtsn_waste_sites', next);
+      return next;
+    });
+  };
+
+  const handleDeleteWasteSite = (id: string) => {
+    setWasteSites((prev) => {
+      const next = prev.filter((ws) => ws.id !== id);
+      saveToStorage('dtsn_waste_sites', next);
+      return next;
+    });
+  };
+
+  // Snow Dumps CRUD Handlers
+  const handleAddSnowDump = (newSd: SnowDump) => {
+    setSnowDumps((prev) => {
+      const next = [newSd, ...prev];
+      saveToStorage('dtsn_snow_dumps', next);
+      return next;
+    });
+  };
+
+  const handleUpdateSnowDump = (updatedSd: SnowDump) => {
+    setSnowDumps((prev) => {
+      const next = prev.map((sd) => (sd.id === updatedSd.id ? updatedSd : sd));
+      saveToStorage('dtsn_snow_dumps', next);
+      return next;
+    });
+  };
+
+  const handleDeleteSnowDump = (id: string) => {
+    setSnowDumps((prev) => {
+      const next = prev.filter((sd) => sd.id !== id);
+      saveToStorage('dtsn_snow_dumps', next);
+      return next;
+    });
+  };
+
+  // Fire Turnarounds CRUD Handlers
+  const handleAddFireTurnaround = (newFt: FireTurnaround) => {
+    setFireTurnarounds((prev) => {
+      const next = [newFt, ...prev];
+      saveToStorage('dtsn_fire_turnarounds', next);
+      return next;
+    });
+  };
+
+  const handleUpdateFireTurnaround = (updatedFt: FireTurnaround) => {
+    setFireTurnarounds((prev) => {
+      const next = prev.map((ft) => (ft.id === updatedFt.id ? updatedFt : ft));
+      saveToStorage('dtsn_fire_turnarounds', next);
+      return next;
+    });
+  };
+
+  const handleDeleteFireTurnaround = (id: string) => {
+    setFireTurnarounds((prev) => {
+      const next = prev.filter((ft) => ft.id !== id);
+      saveToStorage('dtsn_fire_turnarounds', next);
+      return next;
+    });
+  };
+
+  // Inspection Points CRUD Handlers
+  const handleAddInspectionPoint = (newIp: InspectionCheckPoint) => {
+    setInspectionPoints((prev) => {
+      const next = [newIp, ...prev];
+      saveToStorage('dtsn_inspection_points', next);
+      return next;
+    });
+  };
+
+  const handleUpdateInspectionPoint = (updatedIp: InspectionCheckPoint) => {
+    setInspectionPoints((prev) => {
+      const next = prev.map((ip) => (ip.id === updatedIp.id ? updatedIp : ip));
+      saveToStorage('dtsn_inspection_points', next);
+      return next;
+    });
+  };
+
+  const handleDeleteInspectionPoint = (id: string) => {
+    setInspectionPoints((prev) => {
+      const next = prev.filter((ip) => ip.id !== id);
+      saveToStorage('dtsn_inspection_points', next);
+      return next;
+    });
+  };
+
+  // Gas Regulator Station Update Handler
+  const handleUpdateGasRegulator = (updatedGr: GasRegulatorStation) => {
+    setGasRegulator(updatedGr);
+    saveToStorage('dtsn_gas_regulator', updatedGr);
+  };
+
+  const handleAddPlot = (newPlot: Plot) => {
+    setPlots((prev) => {
+      const next = [newPlot, ...prev];
+      saveToStorage('dtsn_plots', next);
+      return next;
+    });
+    apiSavePlot(newPlot);
+  };
+
   const handleUpdatePlot = (updatedPlot: Plot) => {
-    setPlots((prev) => prev.map((p) => (p.id === updatedPlot.id ? updatedPlot : p)));
+    setPlots((prev) => {
+      const next = prev.map((p) => (p.id === updatedPlot.id ? updatedPlot : p));
+      saveToStorage('dtsn_plots', next);
+      return next;
+    });
     apiSavePlot(updatedPlot);
+  };
+
+  const handleDeletePlot = (plotId: string) => {
+    setPlots((prev) => {
+      const next = prev.filter((p) => p.id !== plotId);
+      saveToStorage('dtsn_plots', next);
+      return next;
+    });
+  };
+
+  // Water Metering Nodes (УУВ) Handlers
+  const handleAddWaterMeteringNode = (node: WaterMeteringNode) => {
+    setWaterMeteringNodes((prev) => {
+      const next = [node, ...prev];
+      saveToStorage('dtsn_water_metering_nodes', next);
+      return next;
+    });
+  };
+
+  const handleUpdateWaterMeteringNode = (node: WaterMeteringNode) => {
+    setWaterMeteringNodes((prev) => {
+      const next = prev.map((n) => (n.id === node.id ? node : n));
+      saveToStorage('dtsn_water_metering_nodes', next);
+      return next;
+    });
+  };
+
+  const handleDeleteWaterMeteringNode = (id: string) => {
+    setWaterMeteringNodes((prev) => {
+      const next = prev.filter((n) => n.id !== id);
+      saveToStorage('dtsn_water_metering_nodes', next);
+      return next;
+    });
+  };
+
+  // Dedicated Photo Updater for Wells and Network Assets (persists to storage & database)
+  const handleUpdateItemPhotos = (type: string, id: string, photos: AssetPhoto[]) => {
+    if (type === 'well') {
+      setWells((prev) => {
+        const next = prev.map((w) => (w.id === id ? { ...w, photos } : w));
+        saveToStorage('dtsn_wells', next);
+        const target = next.find((w) => w.id === id);
+        if (target) apiSaveWell(target);
+        return next;
+      });
+    } else if (type === 'valve') {
+      setValves((prev) => {
+        const next = prev.map((v) => (v.id === id ? { ...v, photos } : v));
+        saveToStorage('dtsn_valves', next);
+        const target = next.find((v) => v.id === id);
+        if (target) apiSaveValve(target);
+        return next;
+      });
+    } else if (type === 'switchboard') {
+      setSwitchboards((prev) => {
+        const next = prev.map((sb) => (sb.id === id ? { ...sb, photos } : sb));
+        saveToStorage('dtsn_switchboards', next);
+        const target = next.find((sb) => sb.id === id);
+        if (target) apiSaveSwitchboard(target);
+        return next;
+      });
+    } else if (type === 'substation') {
+      setSubstations((prev) => {
+        const next = prev.map((sub) => (sub.id === id ? { ...sub, photos } : sub));
+        saveToStorage('dtsn_substations', next);
+        const target = next.find((sub) => sub.id === id);
+        if (target) apiSaveSubstation(target);
+        return next;
+      });
+    } else if (type === 'fireHydrant') {
+      setFireHydrants((prev) => {
+        const next = prev.map((fh) => (fh.id === id ? { ...fh, photos } : fh));
+        saveToStorage('dtsn_fire_hydrants', next);
+        const target = next.find((fh) => fh.id === id);
+        if (target) apiSaveFireHydrant(target);
+        return next;
+      });
+    } else if (type === 'pipeline') {
+      setPipelines((prev) => {
+        const next = prev.map((p) => (p.id === id ? { ...p, photos } : p));
+        saveToStorage('dtsn_pipelines', next);
+        const target = next.find((p) => p.id === id);
+        if (target) apiSavePipeline(target);
+        return next;
+      });
+    } else if (type === 'plot') {
+      setPlots((prev) => {
+        const next = prev.map((p) => (p.id === id ? { ...p, photos } : p));
+        saveToStorage('dtsn_plots', next);
+        const target = next.find((p) => p.id === id);
+        if (target) apiSavePlot(target);
+        return next;
+      });
+    } else if (type === 'barrierGate') {
+      setBarrierGates((prev) => {
+        const next = prev.map((bg) => (bg.id === id ? { ...bg, photos } : bg));
+        saveToStorage('dtsn_barrier_gates', next);
+        const target = next.find((bg) => bg.id === id);
+        if (target) apiSaveBarrierGate(target);
+        return next;
+      });
+    } else if (type === 'adminFacility') {
+      setAdminFacilities((prev) => {
+        const next = prev.map((af) => (af.id === id ? { ...af, photos } : af));
+        saveToStorage('dtsn_admin_facilities', next);
+        const target = next.find((af) => af.id === id);
+        if (target) apiSaveAdminFacility(target);
+        return next;
+      });
+    } else if (type === 'lightPole') {
+      setLightPoles((prev) => {
+        const next = prev.map((lp) => (lp.id === id ? { ...lp, photos } : lp));
+        saveToStorage('dtsn_light_poles', next);
+        const target = next.find((lp) => lp.id === id);
+        if (target) apiSaveLightPole(target);
+        return next;
+      });
+    } else if (type === 'wifiHotspot') {
+      setWifiHotspots((prev) => {
+        const next = prev.map((wh) => (wh.id === id ? { ...wh, photos } : wh));
+        saveToStorage('dtsn_wifi_hotspots', next);
+        const target = next.find((wh) => wh.id === id);
+        if (target) apiSaveWifiHotspot(target);
+        return next;
+      });
+    } else if (type === 'waterMeteringNode') {
+      setWaterMeteringNodes((prev) => {
+        const next = prev.map((n) => (n.id === id ? { ...n, photos } : n));
+        saveToStorage('dtsn_water_metering_nodes', next);
+        return next;
+      });
+    }
+  };
+
+  // CCTV Camera CRUD Handlers
+  const handleAddCctvCamera = (cam: CctvCamera) => {
+    setCctvCameras((prev) => {
+      const next = [cam, ...prev];
+      saveToStorage('dtsn_cctv_cameras', next);
+      return next;
+    });
+  };
+
+  const handleUpdateCctvCamera = (cam: CctvCamera) => {
+    setCctvCameras((prev) => {
+      const next = prev.map((c) => (c.id === cam.id ? cam : c));
+      saveToStorage('dtsn_cctv_cameras', next);
+      return next;
+    });
+  };
+
+  const handleDeleteCctvCamera = (id: string) => {
+    setCctvCameras((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      saveToStorage('dtsn_cctv_cameras', next);
+      return next;
+    });
   };
 
   // Universal Coordinate Updater for Drag & Drop (Push & Pull)
   const handleUpdateObjectCoordinates = (type: string, id: string, coordinates: Coordinates) => {
     if (type === 'barrierGate') {
-      setBarrierGates((prev) => prev.map((bg) => (bg.id === id ? { ...bg, coordinates } : bg)));
+      setBarrierGates((prev) => {
+        const next = prev.map((bg) => (bg.id === id ? { ...bg, coordinates } : bg));
+        saveToStorage('dtsn_barrier_gates', next);
+        return next;
+      });
     } else if (type === 'adminFacility') {
-      setAdminFacilities((prev) => prev.map((fac) => (fac.id === id ? { ...fac, coordinates } : fac)));
+      setAdminFacilities((prev) => {
+        const next = prev.map((fac) => (fac.id === id ? { ...fac, coordinates } : fac));
+        saveToStorage('dtsn_admin_facilities', next);
+        return next;
+      });
     } else if (type === 'well') {
-      setWells((prev) => prev.map((w) => (w.id === id ? { ...w, coordinates } : w)));
+      setWells((prev) => {
+        const next = prev.map((w) => (w.id === id ? { ...w, coordinates } : w));
+        saveToStorage('dtsn_wells', next);
+        return next;
+      });
     } else if (type === 'valve') {
-      setValves((prev) => prev.map((v) => (v.id === id ? { ...v, coordinates } : v)));
+      setValves((prev) => {
+        const next = prev.map((v) => (v.id === id ? { ...v, coordinates } : v));
+        saveToStorage('dtsn_valves', next);
+        return next;
+      });
     } else if (type === 'switchboard') {
-      setSwitchboards((prev) => prev.map((sb) => (sb.id === id ? { ...sb, coordinates } : sb)));
+      setSwitchboards((prev) => {
+        const next = prev.map((sb) => (sb.id === id ? { ...sb, coordinates } : sb));
+        saveToStorage('dtsn_switchboards', next);
+        return next;
+      });
     } else if (type === 'substation') {
-      setSubstations((prev) => prev.map((sub) => (sub.id === id ? { ...sub, coordinates } : sub)));
+      setSubstations((prev) => {
+        const next = prev.map((sub) => (sub.id === id ? { ...sub, coordinates } : sub));
+        saveToStorage('dtsn_substations', next);
+        return next;
+      });
     } else if (type === 'fireHydrant') {
-      setFireHydrants((prev) => prev.map((fh) => (fh.id === id ? { ...fh, coordinates } : fh)));
+      setFireHydrants((prev) => {
+        const next = prev.map((fh) => (fh.id === id ? { ...fh, coordinates } : fh));
+        saveToStorage('dtsn_fire_hydrants', next);
+        return next;
+      });
     } else if (type === 'lightPole') {
-      setLightPoles((prev) => prev.map((lp) => (lp.id === id ? { ...lp, coordinates } : lp)));
+      setLightPoles((prev) => {
+        const next = prev.map((lp) => (lp.id === id ? { ...lp, coordinates } : lp));
+        saveToStorage('dtsn_light_poles', next);
+        return next;
+      });
     } else if (type === 'wifiHotspot') {
-      setWifiHotspots((prev) => prev.map((wh) => (wh.id === id ? { ...wh, coordinates } : wh)));
+      setWifiHotspots((prev) => {
+        const next = prev.map((wh) => (wh.id === id ? { ...wh, coordinates } : wh));
+        saveToStorage('dtsn_wifi_hotspots', next);
+        return next;
+      });
+    } else if (type === 'cctvCamera') {
+      setCctvCameras((prev) => {
+        const next = prev.map((c) => (c.id === id ? { ...c, coordinates } : c));
+        saveToStorage('dtsn_cctv_cameras', next);
+        return next;
+      });
     } else if (type === 'gasRegulator') {
-      setGasRegulator((prev) => ({ ...prev, coordinates }));
+      setGasRegulator((prev) => {
+        const next = { ...prev, coordinates };
+        saveToStorage('dtsn_gas_regulator', next);
+        return next;
+      });
+    } else if (type === 'wasteSite') {
+      setWasteSites((prev) => {
+        const next = prev.map((ws) => (ws.id === id ? { ...ws, coordinates } : ws));
+        saveToStorage('dtsn_waste_sites', next);
+        return next;
+      });
+    } else if (type === 'snowDump') {
+      setSnowDumps((prev) => {
+        const next = prev.map((sd) => {
+          if (sd.id === id) {
+            const deltaLat = coordinates.lat - sd.coordinates.lat;
+            const deltaLng = coordinates.lng - sd.coordinates.lng;
+            const newPolygon = (sd.polygon || []).map((pt) => ({
+              lat: Number((pt.lat + deltaLat).toFixed(6)),
+              lng: Number((pt.lng + deltaLng).toFixed(6)),
+            }));
+            return { ...sd, coordinates, polygon: newPolygon };
+          }
+          return sd;
+        });
+        saveToStorage('dtsn_snow_dumps', next);
+        return next;
+      });
+    } else if (type === 'fireTurnaround') {
+      setFireTurnarounds((prev) => {
+        const next = prev.map((ft) => (ft.id === id ? { ...ft, coordinates } : ft));
+        saveToStorage('dtsn_fire_turnarounds', next);
+        return next;
+      });
+    } else if (type === 'inspectionPoint') {
+      setInspectionPoints((prev) => {
+        const next = prev.map((ip) => (ip.id === id ? { ...ip, coordinates } : ip));
+        saveToStorage('dtsn_inspection_points', next);
+        return next;
+      });
+    } else if (type === 'waterMeteringNode') {
+      setWaterMeteringNodes((prev) => {
+        const next = prev.map((n) => (n.id === id ? { ...n, coordinates } : n));
+        saveToStorage('dtsn_water_metering_nodes', next);
+        return next;
+      });
     } else if (type === 'plot') {
-      setPlots((prev) =>
-        prev.map((p) => {
+      setPlots((prev) => {
+        const next = prev.map((p) => {
           if (p.id === id) {
             const deltaLat = coordinates.lat - p.coordinates.lat;
             const deltaLng = coordinates.lng - p.coordinates.lng;
@@ -633,48 +1279,64 @@ export default function App() {
             return updated;
           }
           return p;
-        })
-      );
+        });
+        saveToStorage('dtsn_plots', next);
+        return next;
+      });
     }
     apiUpdateCoordinates(type, id, coordinates);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
-      {/* 3-Zone Navigation Top Bar */}
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans overflow-x-clip">
+      {/* 3-Zone Navigation Top Bar with Smart Search */}
       <Navbar
         activeTab={activeTab}
         season={season}
         currentUser={currentUser}
         allUsers={users}
+        plots={plots}
+        wells={wells}
+        valves={valves}
+        substations={substations}
+        switchboards={switchboards}
+        fireHydrants={fireHydrants}
+        workTasks={workTasks}
+        inspectionLogs={inspectionLogs}
         onSelectTab={setActiveTab}
-        onSelectSeason={setSeason}
-        onSwitchUser={setCurrentUserId}
+        onSelectSeason={handleSeasonChange}
+        onSwitchUser={handleSwitchUser}
+        onSelectPlot={handleSelectPlotFromOtherTab}
+        onSelectNetworkItem={(type, data) => {
+          setSelectedPlotId(null);
+          setActiveTab('map');
+        }}
+        onUpdateCurrentUser={handleUpdateUserProfile}
       />
 
       {/* Main Viewport Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-2 sm:px-4 lg:px-6 py-4 sm:py-6 space-y-6 overflow-x-clip">
         {/* TAB 1: GIS ENGINEERING MAP */}
         {activeTab === 'map' && (
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-xl border border-slate-200 shadow-xs">
               <div>
-                <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-sky-600" />
+                <h1 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-sky-600" />
                   <span>Интерактивная карта инженерных сетей ДТСН «Пенсионер»</span>
                 </h1>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Геокоординаты: <span className="font-mono text-slate-700">55.098612, 82.900919</span> · Поворот карты и ориентация по улицам
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Геокоординаты: <span className="font-mono text-slate-700">55.098612, 82.900919</span> · Квартал НСПД: <span className="font-mono text-slate-700 font-semibold">54:19:112001</span>
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold font-mono text-[11px] shadow-xs">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold font-mono text-[11px] shadow-xs">
                   <Database className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span>PostgreSQL Cloud SQL: Подключено (Хранение сетей и контура)</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>PostgreSQL Cloud SQL</span>
                 </span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px]">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px]">
                   <span>5 типов сетей</span>
                 </span>
               </div>
@@ -700,11 +1362,11 @@ export default function App() {
               adminFacilities={adminFacilities}
               selectedPlotId={selectedPlotId}
               highlightedRoute={highlightedRoute}
-              canEditNetworks={currentUser.permissions.canEditNetworks || currentUser.role === 'chairman' || currentUser.role === 'engineer'}
+              canEditNetworks={Boolean(currentUser?.permissions?.canEditNetworks || currentUser?.role === 'chairman' || currentUser?.role === 'engineer')}
               onSelectPlot={handleSelectPlot}
               onSelectWell={handleSelectWell}
               onStartWinterConnection={handleStartWinterConnection}
-              onSeasonChange={setSeason}
+              onSeasonChange={handleSeasonChange}
               boundaryPoints={boundaryPoints}
               onSaveBoundaryPoints={handleSaveBoundary}
               onAddPipeline={handleAddPipeline}
@@ -731,9 +1393,39 @@ export default function App() {
               onAddWifiHotspot={handleAddWifiHotspot}
               onUpdateWifiHotspot={handleUpdateWifiHotspot}
               onDeleteWifiHotspot={handleDeleteWifiHotspot}
+              onAddBarrierGate={handleAddBarrierGate}
+              onUpdateBarrierGate={handleUpdateBarrierGate}
+              onDeleteBarrierGate={handleDeleteBarrierGate}
+              onAddAdminFacility={handleAddAdminFacility}
+              onUpdateAdminFacility={handleUpdateAdminFacility}
+              onDeleteAdminFacility={handleDeleteAdminFacility}
+              onAddWasteSite={handleAddWasteSite}
+              onUpdateWasteSite={handleUpdateWasteSite}
+              onDeleteWasteSite={handleDeleteWasteSite}
+              onAddSnowDump={handleAddSnowDump}
+              onUpdateSnowDump={handleUpdateSnowDump}
+              onDeleteSnowDump={handleDeleteSnowDump}
+              onAddFireTurnaround={handleAddFireTurnaround}
+              onUpdateFireTurnaround={handleUpdateFireTurnaround}
+              onDeleteFireTurnaround={handleDeleteFireTurnaround}
+              onAddInspectionPoint={handleAddInspectionPoint}
+              onUpdateInspectionPoint={handleUpdateInspectionPoint}
+              onDeleteInspectionPoint={handleDeleteInspectionPoint}
+              onUpdateGasRegulator={handleUpdateGasRegulator}
               onUpdateCoordinates={handleUpdateObjectCoordinates}
               onUpdatePlot={handleUpdatePlot}
               onToggleValve={handleToggleValve}
+              onUpdatePhotos={handleUpdateItemPhotos}
+              cctvCameras={cctvCameras}
+              onAddCctvCamera={handleAddCctvCamera}
+              onUpdateCctvCamera={handleUpdateCctvCamera}
+              onDeleteCctvCamera={handleDeleteCctvCamera}
+              waterMeteringNodes={waterMeteringNodes}
+              onAddWaterMeteringNode={handleAddWaterMeteringNode}
+              onUpdateWaterMeteringNode={handleUpdateWaterMeteringNode}
+              onDeleteWaterMeteringNode={handleDeleteWaterMeteringNode}
+              onAddPlot={handleAddPlot}
+              onDeletePlot={handleDeletePlot}
             />
           </div>
         )}
@@ -755,9 +1447,11 @@ export default function App() {
               setActiveTab('map');
             }}
             onApproveRequest={(reqId) => {
-              setWinterRequests((prev) =>
-                prev.map((r) => (r.id === reqId ? { ...r, approvedByChairman: true, status: 'tu_issued' } : r))
-              );
+              setWinterRequests((prev) => {
+                const next = prev.map((r) => (r.id === reqId ? { ...r, approvedByChairman: true, status: 'tu_issued' as const } : r));
+                saveToStorage('dtsn_winter_requests', next);
+                return next;
+              });
             }}
           />
         )}
@@ -791,8 +1485,12 @@ export default function App() {
           <PlotsDirectory
             plots={plots}
             winterRequests={winterRequests}
+            canEdit={Boolean(currentUser?.role === 'chairman' || currentUser?.role === 'engineer' || currentUser?.permissions?.canEditNetworks)}
             onSelectPlotOnMap={handleSelectPlotFromOtherTab}
             onStartWinterConnection={handleStartWinterConnection}
+            onUpdatePlot={handleUpdatePlot}
+            onAddPlot={handleAddPlot}
+            onDeletePlot={handleDeletePlot}
             onViewDocumentsForPlot={(plot) => {
               const req = winterRequests.find((r) => r.plotNumber === plot.number);
               const well = wells.find((w) => w.id === req?.selectedWellId) || wells[0];
@@ -811,7 +1509,8 @@ export default function App() {
             currentUser={currentUser}
             onUpdateUserPermissions={handleUpdateUserPermissions}
             onAddMaintenanceRecord={handleAddMaintenanceRecord}
-            onSwitchUser={setCurrentUserId}
+            onSwitchUser={handleSwitchUser}
+            onUpdateUserProfile={handleUpdateUserProfile}
           />
         )}
       </main>
@@ -841,7 +1540,7 @@ export default function App() {
           well={documentModalData.well}
           onClose={() => setDocumentModalData(null)}
           onApproveAndSign={handleApproveAndSignPackage}
-          canApprove={currentUser.permissions.canApproveTU || currentUser.role === 'chairman'}
+          canApprove={Boolean(currentUser?.permissions?.canApproveTU || currentUser?.role === 'chairman')}
         />
       )}
 
