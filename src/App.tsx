@@ -1006,6 +1006,33 @@ export default function App() {
     });
   };
 
+  const handleBatchImportPlots = (importedPlots: Plot[]) => {
+    setPlots((prev) => {
+      const updatedList = [...prev];
+      importedPlots.forEach((imp) => {
+        const idx = updatedList.findIndex((p) => p.id === imp.id || p.number === imp.number);
+        if (idx !== -1) {
+          updatedList[idx] = {
+            ...updatedList[idx],
+            ...imp,
+            coordinates: imp.coordinates?.lat ? imp.coordinates : updatedList[idx].coordinates,
+            polygon: imp.polygon && imp.polygon.length >= 3 ? imp.polygon : updatedList[idx].polygon,
+            utilities: {
+              ...updatedList[idx].utilities,
+              ...imp.utilities,
+            },
+          };
+          apiSavePlot(updatedList[idx]);
+        } else {
+          updatedList.push(imp);
+          apiSavePlot(imp);
+        }
+      });
+      saveToStorage('dtsn_plots', updatedList);
+      return updatedList;
+    });
+  };
+
   // Water Metering Nodes (УУВ) Handlers
   const handleAddWaterMeteringNode = (node: WaterMeteringNode) => {
     setWaterMeteringNodes((prev) => {
@@ -1491,6 +1518,7 @@ export default function App() {
             onUpdatePlot={handleUpdatePlot}
             onAddPlot={handleAddPlot}
             onDeletePlot={handleDeletePlot}
+            onBatchImportPlots={handleBatchImportPlots}
             onViewDocumentsForPlot={(plot) => {
               const req = winterRequests.find((r) => r.plotNumber === plot.number);
               const well = wells.find((w) => w.id === req?.selectedWellId) || wells[0];

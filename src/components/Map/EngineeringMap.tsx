@@ -38,11 +38,14 @@ import { NetworkLayerInspector } from './NetworkLayerInspector';
 import { NetworkLayerEditorModal, EditableObjectType } from './NetworkLayerEditorModal';
 import { LayerCatalogModal } from './LayerCatalogModal';
 import { PlotEditorModal } from '../Plots/PlotsDirectory';
+import { exportPlotsToExcel } from '../../utils/plotExcelUtils';
 import {
   Layers,
   Droplet,
   Zap,
   Flame,
+  FileSpreadsheet,
+  Download,
   Home,
   Snowflake,
   Sun,
@@ -299,7 +302,7 @@ export const EngineeringMap: React.FC<EngineeringMapProps> = ({
     return localStorage.getItem('dtsn_map_locked') !== 'false';
   });
   const [pipelineSnapNotice, setPipelineSnapNotice] = useState<string | null>(null);
-  const [alignPlotsSuccess, setAlignPlotsSuccess] = useState<string | null>(null);
+  const [plotMovedToast, setPlotMovedToast] = useState<string | null>(null);
 
   const toggleMapLock = () => {
     setIsMapLocked((prev) => {
@@ -382,27 +385,15 @@ export const EngineeringMap: React.FC<EngineeringMapProps> = ({
     return list;
   }, [wells, valves, substations, switchboards, lightPoles, fireHydrants, gasRegulator, waterMeteringNodes]);
 
-  // Align / Bind all plots inside the DTSN Cadastral Boundary (item 1)
-  const handleAlignPlotsToCadastre = () => {
-    const alignedPlots = INITIAL_PLOTS.map((canonical) => {
-      const existing = plots.find((p) => p.number === canonical.number);
-      if (existing) {
-        return {
-          ...existing,
-          coordinates: canonical.coordinates,
-          polygon: canonical.polygon,
-        };
-      }
-      return canonical;
-    });
-
-    alignedPlots.forEach((ap) => {
-      if (onUpdatePlot) onUpdatePlot(ap);
-    });
-    localStorage.setItem('dtsn_plots', JSON.stringify(alignedPlots));
-
-    setAlignPlotsSuccess('Все 24 участка успешно привязаны к фактическим кадастровым границам ДТСН!');
-    setTimeout(() => setAlignPlotsSuccess(null), 4000);
+  // Micro-adjustment / Nudge entire working polygon (plot or boundary) in cardinal directions
+  const handleNudgeWorkingPolygon = (dLat: number, dLng: number) => {
+    if (!editingPolygonTarget || workingPolygonPoints.length === 0) return;
+    setGeometryHistory((prev) => [...prev, workingPolygonPointsRef.current]);
+    const shifted = workingPolygonPoints.map((pt) => ({
+      lat: Number((pt.lat + dLat).toFixed(6)),
+      lng: Number((pt.lng + dLng).toFixed(6)),
+    }));
+    setWorkingPolygonPoints(shifted);
   };
 
   // Clean boundary points ring ensuring no duplicate closing vertex
@@ -2603,7 +2594,7 @@ export const EngineeringMap: React.FC<EngineeringMapProps> = ({
         plotGroup.addLayer(poly);
 
         // PERMANENT NSPD CADASTRAL & PLOT BADGE (Readable without hover)
-        if (showCadastralLabels && plotLabels) {
+        if ((showCadastralLabels || !isMapLocked) && plotLabels) {
           let badgeHtml = '';
           if (resourceAvailabilityMode) {
             const badgeBg = isWinterConnected
@@ -2709,6 +2700,8 @@ export const EngineeringMap: React.FC<EngineeringMapProps> = ({
               onUpdatePlot(updatedPlot);
             }
             setActivePlot(updatedPlot);
+            setPlotMovedToast(`✓ Положение участка № ${plot.number} и его границы зафиксированы на карте!`);
+            setTimeout(() => setPlotMovedToast(null), 3500);
           });
 
           labelMarker.on('click', (e) => {
@@ -3054,16 +3047,16 @@ export const EngineeringMap: React.FC<EngineeringMapProps> = ({
           </div>
         )}
 
-        {/* NOTIFICATION TOAST: ALIGN PLOTS SUCCESS */}
-        {alignPlotsSuccess && (
-          <div className="p-2 px-3 bg-indigo-900/95 backdrop-blur-md text-white rounded-xl shadow-lg border border-indigo-400 text-xs flex items-center justify-between gap-2 animate-fadeIn">
+        {/* NOTIFICATION TOAST: PLOT MOVED & BOUNDARY FIXED */}
+        {plotMovedToast && (
+          <div className="p-2 px-3 bg-slate-900/95 backdrop-blur-md text-white rounded-xl shadow-lg border border-emerald-400 text-xs flex items-center justify-between gap-2 animate-fadeIn">
             <span className="flex items-center gap-1.5 font-medium">
               <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-              {alignPlotsSuccess}
+              {plotMovedToast}
             </span>
             <button
-              onClick={() => setAlignPlotsSuccess(null)}
-              className="p-0.5 hover:bg-indigo-800 rounded text-indigo-200"
+              onClick={() => setPlotMovedToast(null)}
+              className="p-0.5 hover:bg-slate-800 rounded text-slate-300"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -3311,20 +3304,39 @@ export const EngineeringMap: React.FC<EngineeringMapProps> = ({
                 </div>
 
                 <div className="space-y-2 text-xs">
-                  {/* Automatic Plot Alignment Tool (Item 1) */}
-                  <div className="p-2.5 rounded-xl bg-indigo-50/80 border border-indigo-200 space-y-1.5">
-                    <div className="font-bold text-indigo-950 flex items-center gap-1.5 text-xs">
-                      <span>📐 Привязка участков к кадастру</span>
+                  {/* Cadastral Boundaries Positioning & Fix Controls */}
+                  <div className="p-3 rounded-xl bg-slate-900 text-white space-y-2 border border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs flex items-center gap-1.5 text-amber-300">
+                        <Move className="w-3.5 h-3.5" />
+                        Позиционирование & Границы
+                      </span>
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${isMapLocked ? 'bg-emerald-950 text-emerald-300 border border-emerald-700' : 'bg-amber-500 text-slate-950'}`}>
+                        {isMapLocked ? '🔒 Зафиксировано' : '🔓 Drag&Drop активен'}
+                      </span>
                     </div>
-                    <p className="text-[11px] text-indigo-800 leading-snug">
-                      Автоматически синхронизирует и центрирует все участки внутри фактических границ выделенной территории ДТСН.
+                    <p className="text-[11px] text-slate-300 leading-snug">
+                      Перемещайте участки целиком (за метку с номером) или настраивайте каждую границу через режим <b>«Править границы (Push & Pull)»</b>. Все сделанные изменения сохраняются и не сбрасываются.
                     </p>
-                    <button
-                      onClick={handleAlignPlotsToCadastre}
-                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-center transition-colors shadow-xs"
-                    >
-                      Привязать участки к карте территории
-                    </button>
+                    <div className="pt-1">
+                      <button
+                        onClick={() => {
+                          const next = !isMapLocked;
+                          setIsMapLocked(next);
+                          localStorage.setItem('dtsn_map_locked', String(next));
+                          setPlotMovedToast(next ? 'Все участки и границы зафиксированы на карте от сдвигов!' : 'Режим свободного перемещения (Drag & Drop) включен: перетаскивайте участки мышью!');
+                          setTimeout(() => setPlotMovedToast(null), 3500);
+                        }}
+                        className={`w-full py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs ${
+                          isMapLocked
+                            ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                        }`}
+                      >
+                        {isMapLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                        <span>{isMapLocked ? 'Разблокировать перемещение участков' : 'Зафиксировать все границы на месте'}</span>
+                      </button>
+                    </div>
                   </div>
 
                   <button
@@ -3369,6 +3381,19 @@ export const EngineeringMap: React.FC<EngineeringMapProps> = ({
                       <span>Правка границы ДТСН (Push & Pull)</span>
                     </span>
                     <span className="text-xs">✏️</span>
+                  </button>
+
+                  {/* Quick Excel Export of Plots Registry */}
+                  <button
+                    onClick={() => exportPlotsToExcel(plots)}
+                    className="w-full flex items-center justify-between p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold transition-all text-xs shadow-2xs"
+                    title="Выгрузить реестр всех участков в Excel (.xlsx)"
+                  >
+                    <span className="flex items-center gap-2">
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                      <span>Экспорт базы участков в Excel</span>
+                    </span>
+                    <Download className="w-3.5 h-3.5 text-emerald-700" />
                   </button>
                 </div>
               </div>
@@ -3574,6 +3599,43 @@ export const EngineeringMap: React.FC<EngineeringMapProps> = ({
             </div>
 
             <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Nudge entire contour controls */}
+              <div className="flex items-center gap-0.5 bg-slate-800 p-0.5 rounded-xl border border-slate-700" title="Микро-сдвиг всего контура стрелками (~1.5 м)">
+                <span className="text-[9px] text-slate-400 px-1 font-semibold">Сдвиг:</span>
+                <button
+                  type="button"
+                  onClick={() => handleNudgeWorkingPolygon(0.000015, 0)}
+                  className="px-1.5 py-1 text-[11px] hover:bg-slate-700 text-slate-200 rounded font-bold"
+                  title="Сдвинуть весь контур на Север (вверх)"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleNudgeWorkingPolygon(-0.000015, 0)}
+                  className="px-1.5 py-1 text-[11px] hover:bg-slate-700 text-slate-200 rounded font-bold"
+                  title="Сдвинуть весь контур на Юг (вниз)"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleNudgeWorkingPolygon(0, -0.00002)}
+                  className="px-1.5 py-1 text-[11px] hover:bg-slate-700 text-slate-200 rounded font-bold"
+                  title="Сдвинуть весь контур на Запад (влево)"
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleNudgeWorkingPolygon(0, 0.00002)}
+                  className="px-1.5 py-1 text-[11px] hover:bg-slate-700 text-slate-200 rounded font-bold"
+                  title="Сдвинуть весь контур на Восток (вправо)"
+                >
+                  →
+                </button>
+              </div>
+
               {/* Add Point click toggle */}
               <button
                 type="button"
@@ -3600,14 +3662,15 @@ export const EngineeringMap: React.FC<EngineeringMapProps> = ({
                 <Undo2 className="w-3.5 h-3.5" />
               </button>
 
-              {/* Save Geometry */}
+              {/* Save & Fix Geometry */}
               <button
                 type="button"
                 onClick={handleSaveGeometry}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl flex items-center gap-1 transition-colors shadow-sm"
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl flex items-center gap-1.5 transition-colors shadow-sm"
+                title="Зафиксировать измененные границы и сохранить"
               >
                 {isSaveSuccess ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" /> : <Check className="w-3.5 h-3.5" />}
-                <span className="text-[11px]">{isSaveSuccess ? 'Сохранено!' : 'Сохранить'}</span>
+                <span className="text-[11px]">{isSaveSuccess ? 'Зафиксировано!' : 'Зафиксировать границы'}</span>
               </button>
 
               {/* Cancel / Finish */}
@@ -3809,7 +3872,7 @@ export const EngineeringMap: React.FC<EngineeringMapProps> = ({
               title="Перемещать вершины и изменять форму контура участка"
             >
               <Move className="w-3.5 h-3.5 text-blue-200" />
-              <span>Вершины (Push&Pull)</span>
+              <span>Править границы (Push&Pull)</span>
             </button>
 
             <button
@@ -3823,12 +3886,29 @@ export const EngineeringMap: React.FC<EngineeringMapProps> = ({
             </button>
           </div>
 
-          {/* Drag & Drop Hint */}
-          <div className="p-2 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-center gap-1.5">
-            <Move className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-            <span>
-              <b>Совет:</b> Зажмите и перетаскивайте метку <b>№ {activePlot.number}</b> по карте, чтобы переместить весь участок целиком.
-            </span>
+          {/* Quick Lock / Drag & Drop Controller for this plot */}
+          <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+            <div className="flex items-center gap-1.5 text-slate-700 text-[11px]">
+              {isMapLocked ? <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <Unlock className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
+              <span>{isMapLocked ? 'Границы зафиксированы' : 'Drag&Drop: тащите метку № ' + activePlot.number}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !isMapLocked;
+                setIsMapLocked(next);
+                localStorage.setItem('dtsn_map_locked', String(next));
+                setPlotMovedToast(next ? `Положение участка № ${activePlot.number} зафиксировано!` : 'Drag & Drop включен: перетащите участок за метку с номером!');
+                setTimeout(() => setPlotMovedToast(null), 3000);
+              }}
+              className={`px-2 py-1 rounded-lg font-bold text-[10px] transition-colors ${
+                isMapLocked
+                  ? 'bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-500'
+              }`}
+            >
+              {isMapLocked ? '🔓 Разблокировать' : '🔒 Зафиксировать'}
+            </button>
           </div>
 
           {/* Official NSPD Cadastral Info Card */}

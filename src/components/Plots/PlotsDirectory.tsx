@@ -19,7 +19,12 @@ import {
   Gauge,
   Plus,
   Trash2,
+  FileSpreadsheet,
+  Download,
+  Upload,
 } from 'lucide-react';
+import { PlotsImportExportModal } from './PlotsImportExportModal';
+import { exportPlotsToExcel } from '../../utils/plotExcelUtils';
 
 interface PlotsDirectoryProps {
   plots: Plot[];
@@ -31,6 +36,7 @@ interface PlotsDirectoryProps {
   onUpdatePlot?: (plot: Plot) => void;
   onAddPlot?: (plot: Plot) => void;
   onDeletePlot?: (id: string) => void;
+  onBatchImportPlots?: (importedPlots: Plot[]) => void;
 }
 
 export const PlotsDirectory: React.FC<PlotsDirectoryProps> = ({
@@ -43,12 +49,14 @@ export const PlotsDirectory: React.FC<PlotsDirectoryProps> = ({
   onUpdatePlot,
   onAddPlot,
   onDeletePlot,
+  onBatchImportPlots,
 }) => {
   const [search, setSearch] = useState('');
   const [filterResidency, setFilterResidency] = useState<'all' | 'permanent' | 'occasional' | 'winter_connected'>('all');
   const [editingPlot, setEditingPlot] = useState<Plot | null>(null);
   const [isAddingPlot, setIsAddingPlot] = useState<boolean>(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [isImportExportOpen, setIsImportExportOpen] = useState<boolean>(false);
 
   const filteredPlots = (plots || []).filter((plot) => {
     if (!plot) return false;
@@ -85,9 +93,9 @@ export const PlotsDirectory: React.FC<PlotsDirectoryProps> = ({
           </p>
         </div>
 
-        {/* Quick Search & Add Plot Action */}
+        {/* Quick Search & Excel/CSV Actions */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-          <div className="flex items-center gap-2 w-full sm:w-72 p-1.5 bg-slate-50 border border-slate-200 rounded-xl">
+          <div className="flex items-center gap-2 w-full sm:w-64 p-1.5 bg-slate-50 border border-slate-200 rounded-xl">
             <Search className="w-4 h-4 text-slate-400 ml-1.5 shrink-0" />
             <input
               type="text"
@@ -98,10 +106,30 @@ export const PlotsDirectory: React.FC<PlotsDirectoryProps> = ({
             />
           </div>
 
+          {/* Quick One-Click Export to Excel */}
+          <button
+            onClick={() => exportPlotsToExcel(plots)}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 whitespace-nowrap cursor-pointer active:scale-98"
+            title="Быстро скачать всю базу участков в Excel (.xlsx)"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Экспорт в Excel</span>
+          </button>
+
+          {/* Full Import / Export Modal Button */}
+          <button
+            onClick={() => setIsImportExportOpen(true)}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 whitespace-nowrap cursor-pointer active:scale-98"
+            title="Импорт и экспорт базы участков (Excel / CSV)"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            <span>Импорт / Экспорт</span>
+          </button>
+
           {canEdit && (
             <button
               onClick={() => setIsAddingPlot(true)}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 whitespace-nowrap cursor-pointer"
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 whitespace-nowrap cursor-pointer active:scale-98"
             >
               <Plus className="w-4 h-4" />
               <span>Добавить участок</span>
@@ -312,6 +340,28 @@ export const PlotsDirectory: React.FC<PlotsDirectoryProps> = ({
           }}
         />
       )}
+
+      {/* EXCEL & CSV IMPORT / EXPORT MODAL */}
+      <PlotsImportExportModal
+        isOpen={isImportExportOpen}
+        onClose={() => setIsImportExportOpen(false)}
+        plots={plots}
+        onImportPlots={(importedPlots) => {
+          if (onBatchImportPlots) {
+            onBatchImportPlots(importedPlots);
+          } else {
+            // Fallback: update or add individually
+            importedPlots.forEach((imp) => {
+              const exists = plots.some((p) => p.number === imp.number || p.id === imp.id);
+              if (exists && onUpdatePlot) {
+                onUpdatePlot(imp);
+              } else if (onAddPlot) {
+                onAddPlot(imp);
+              }
+            });
+          }
+        }}
+      />
     </div>
   );
 };

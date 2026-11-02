@@ -12,6 +12,7 @@ import {
   InspectionLogEntry,
 } from '../types/index.ts';
 import { UserProfileModal } from './Profile/UserProfileModal';
+import { LocalRunModal } from './LocalRunModal';
 import {
   Snowflake,
   Sun,
@@ -37,6 +38,7 @@ import {
   Activity,
   ArrowRight,
   Sparkles,
+  Monitor,
 } from 'lucide-react';
 
 const SEASONS: {
@@ -99,6 +101,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isSeasonDropdownOpen, setIsSeasonDropdownOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isLocalRunModalOpen, setIsLocalRunModalOpen] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const seasonMenuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -591,6 +594,17 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Zone 3: Compact Season Selector & Unified Profile Menu */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Local Run & Tunnel Shortcut */}
+          <button
+            type="button"
+            onClick={() => setIsLocalRunModalOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-98"
+            title="Инструкция и запуск приложения на ПК (Windows / Mac) и через туннель"
+          >
+            <Monitor className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+            <span className="hidden md:inline">ПК & Туннель</span>
+          </button>
+
           {/* Season Mode Dropdown */}
           <div ref={seasonMenuRef} className="relative shrink-0">
             <button
@@ -799,6 +813,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           }}
         />
       )}
+
+      {/* Local Run & Tunnel Instructions Modal */}
+      <LocalRunModal
+        isOpen={isLocalRunModalOpen}
+        onClose={() => setIsLocalRunModalOpen(false)}
+      />
     </header>
   );
 };
